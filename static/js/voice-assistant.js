@@ -7,6 +7,8 @@ class VoiceAssistant {
         this.wakeWordDetected = false;
         this.lastTranscript = '';
         this.lastCommandTime = 0; // Add debouncing for commands
+        this.commandTimeout = null; // Timer for processing commands
+        this.processingLock = false; // Prevent multiple processing attempts
         
         // Enhanced features
         this.languageManager = null;
@@ -199,32 +201,62 @@ class VoiceAssistant {
         
         this.recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
+            
+            // Handle different types of errors appropriately
+            if (event.error === 'already-started' || event.error === 'already-listening') {
+                console.log('Speech recognition already active - not an error');
+                return; // Don't show error for this
+            }
+            
+            // Reset state on serious errors
+            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                this.isListening = false;
+                if (this.onError) {
+                    this.onError(`Speech recognition error: ${event.error} - Please check microphone permissions`);
+                }
+                return;
+            }
+            
             if (this.onError) {
                 this.onError(`Speech recognition error: ${event.error}`);
             }
             
-            // Restart recognition on certain errors
+            // Only restart recognition on recoverable errors
             if (event.error === 'network' || event.error === 'aborted') {
+                this.isListening = false; // Reset state
                 setTimeout(() => {
-                    if (this.isListening) {
+                    if (!this.isListening && !this.isProcessing && !this.processingLock) {
+                        console.log('Attempting to restart after error:', event.error);
                         this.startListening();
                     }
-                }, 1000);
+                }, 1500);
+            } else {
+                // For other errors, just reset state
+                this.isListening = false;
             }
         };
         
         this.recognition.onend = () => {
-            console.log('Speech recognition ended');
-            if (this.isListening && !this.isProcessing) {
+            console.log('Speech recognition ended, isListening:', this.isListening, 'isProcessing:', this.isProcessing);
+            
+            // Always reset isListening when recognition actually ends
+            const wasListening = this.isListening;
+            this.isListening = false;
+            
+            if (wasListening && !this.isProcessing && !this.processingLock) {
                 // Restart recognition if it should be continuous
-                // Add longer delay to prevent conflicts
+                console.log('Scheduling speech recognition restart...');
                 setTimeout(() => {
-                    if (this.isListening && !this.isProcessing) {
+                    // Double-check we still want to be listening
+                    if (!this.isProcessing && !this.processingLock && !this.isListening) {
+                        console.log('Restarting speech recognition...');
                         this.startListening();
+                    } else {
+                        console.log('Skipping restart - system busy or already listening');
                     }
-                }, 500);
+                }, 750); // Longer delay to ensure complete shutdown
             } else {
-                this.isListening = false;
+                console.log('Not restarting recognition - not listening or processing');
                 if (this.onListeningChange) {
                     this.onListeningChange(false);
                 }
@@ -261,23 +293,26 @@ class VoiceAssistant {
         // }
         
         // Use enhanced wake word detection if available, otherwise fallback to simple detection
-        if (!this.wakeWordDetected) {
+        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock) {
             let wakeWordDetected = false;
             
             console.log(`Checking wake word in: "${transcript}" (final: ${isFinal})`);
             
-            if (this.enhancedWakeWordDetector) {
-                console.log('Using enhanced wake word detector...');
-                const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
-                wakeWordDetected = wakeWordResult.detected;
-                console.log('Enhanced wake word result:', wakeWordResult);
-                if (wakeWordDetected) {
-                    console.log('Enhanced wake word detected!', wakeWordResult);
+            // Only check for wake word if we have substantial text and it's final or a clear interim result
+            if ((isFinal && transcript.length > 3) || (!isFinal && transcript.length > 6)) {
+                if (this.enhancedWakeWordDetector) {
+                    console.log('Using enhanced wake word detector...');
+                    const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
+                    wakeWordDetected = wakeWordResult.detected;
+                    console.log('Enhanced wake word result:', wakeWordResult);
+                    if (wakeWordDetected) {
+                        console.log('Enhanced wake word detected!', wakeWordResult);
+                    }
+                } else {
+                    console.log('Using simple wake word detection...');
+                    // Fallback to simple wake word detection
+                    wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
                 }
-            } else {
-                console.log('Using simple wake word detection...');
-                // Fallback to simple wake word detection
-                wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
             }
             
             if (wakeWordDetected) {
@@ -294,14 +329,40 @@ class VoiceAssistant {
                 if (this.onStatusChange) {
                     this.onStatusChange(statusMessage);
                 }
+                
+                // Auto-reset wake word after 10 seconds if no command is given
+                setTimeout(() => {
+                    if (this.wakeWordDetected && !this.isProcessing && !this.processingLock) {
+                        console.log('🔄 Auto-resetting wake word detection after timeout');
+                        this.wakeWordDetected = false;
+                        this.lastTranscript = '';
+                        if (this.commandTimeout) {
+                            clearTimeout(this.commandTimeout);
+                            this.commandTimeout = null;
+                        }
+                        if (this.onStatusChange) {
+                            this.onStatusChange('Ready - Say "Jarvis" to begin');
+                        }
+                    }
+                }, 10000);
+                
                 return;
             }
         } else {
             // Wake word already detected, capture the command
             this.lastTranscript = transcript;
             
+            console.log(`🎤 Command capture - Transcript: "${transcript}", isFinal: ${isFinal}, Length: ${transcript.length}`);
+            
+            // Clear any existing command timeout
+            if (this.commandTimeout) {
+                clearTimeout(this.commandTimeout);
+                this.commandTimeout = null;
+            }
+            
+            // Process command immediately if final and has content
             if (isFinal && transcript.length > 0) {
-                console.log('🎤 Processing voice command:', transcript);
+                console.log('🎤 Processing voice command (final):', transcript);
                 
                 // Send debug info to server
                 fetch('/api/debug-query', {
@@ -314,6 +375,29 @@ class VoiceAssistant {
                 }).catch(e => console.warn('Debug logging failed:', e));
                 
                 this.processCommand(transcript);
+            } 
+            // For interim results, set a timeout to process if speech stops (less aggressive)
+            else if (!isFinal && transcript.length > 10) {
+                console.log('🎤 Setting command timeout for interim result:', transcript);
+                this.commandTimeout = setTimeout(() => {
+                    if (this.wakeWordDetected && !this.isProcessing && !this.processingLock && this.lastTranscript.length > 10) {
+                        console.log('🎤 Processing voice command (timeout):', this.lastTranscript);
+                        
+                        // Send debug info to server
+                        fetch('/api/debug-query', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                                originalTranscript: this.lastTranscript,
+                                query: this.lastTranscript 
+                            })
+                        }).catch(e => console.warn('Debug logging failed:', e));
+                        
+                        this.processCommand(this.lastTranscript);
+                    } else {
+                        console.log('🚫 Timeout processing skipped - already processed or invalid state');
+                    }
+                }, 3000); // Process after 3 seconds of silence (longer)
             }
         }
     }
@@ -371,18 +455,28 @@ class VoiceAssistant {
      * Enhanced command processing with better preprocessing
      */
     async processCommand(command) {
-        // Debouncing: prevent commands within 2 seconds of each other
+        // Strong debouncing: prevent commands within 5 seconds of each other
         const now = Date.now();
-        if (now - this.lastCommandTime < 2000) {
-            console.log('🚫 Command ignored due to debouncing');
+        if (now - this.lastCommandTime < 5000) {
+            console.log('🚫 Command ignored due to debouncing (5 second cooldown)');
             return;
         }
         
-        if (this.isProcessing) return;
+        if (this.isProcessing || this.processingLock) {
+            console.log('🚫 Command ignored - already processing');
+            return;
+        }
         
         this.isProcessing = true;
+        this.processingLock = true;
         this.wakeWordDetected = false;
         this.lastCommandTime = now;
+        
+        // Clear any pending command timeouts
+        if (this.commandTimeout) {
+            clearTimeout(this.commandTimeout);
+            this.commandTimeout = null;
+        }
         
         // Normalize the voice input first
         const originalCommand = command;
@@ -481,6 +575,8 @@ class VoiceAssistant {
             }
         } finally {
             this.isProcessing = false;
+            this.processingLock = false;
+            console.log('✅ Command processing completed - lock released');
         }
     }
     
@@ -605,13 +701,21 @@ class VoiceAssistant {
             return false;
         }
         
+        // Check if recognition is already active
+        if (this.isListening) {
+            console.log('Speech recognition already active, skipping start');
+            return true;
+        }
+        
         try {
+            console.log('Starting speech recognition...');
             this.isListening = true;
             this.wakeWordDetected = false;
             this.recognition.start();
             return true;
         } catch (error) {
             console.error('Error starting speech recognition:', error);
+            this.isListening = false; // Reset state on error
             if (this.onError) {
                 this.onError(`Error starting speech recognition: ${error.message}`);
             }
@@ -620,10 +724,16 @@ class VoiceAssistant {
     }
     
     stopListening() {
-        if (this.recognition && this.isListening) {
+        if (this.recognition) {
+            console.log('Stopping speech recognition...');
             this.isListening = false;
             this.wakeWordDetected = false;
-            this.recognition.stop();
+            
+            try {
+                this.recognition.stop();
+            } catch (error) {
+                console.log('Speech recognition already stopped:', error.message);
+            }
             
             if (this.onStatusChange) {
                 this.onStatusChange('Stopped');
