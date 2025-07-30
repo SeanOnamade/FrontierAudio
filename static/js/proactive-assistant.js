@@ -2,8 +2,9 @@
 // Monitors conditions and provides automatic notifications and alerts
 
 class ProactiveAssistant {
-    constructor(apiEndpoint = '/api') {
+    constructor(apiEndpoint = '/api', voiceAssistant = null) {
         this.apiEndpoint = apiEndpoint;
+        this.voiceAssistant = voiceAssistant; // Reference to main voice assistant
         this.isActive = false;
         this.monitoringInterval = null;
         this.alertRules = new Map();
@@ -189,7 +190,8 @@ class ProactiveAssistant {
         try {
             const response = await fetch(`${this.apiEndpoint}/flights/status`);
             if (response.ok) {
-                return await response.json();
+                const data = await response.json();
+                return data.flights || [];
             }
         } catch (error) {
             console.error('Error fetching flight status:', error);
@@ -201,7 +203,8 @@ class ProactiveAssistant {
         try {
             const response = await fetch(`${this.apiEndpoint}/equipment/status`);
             if (response.ok) {
-                return await response.json();
+                const data = await response.json();
+                return data.equipment || [];
             }
         } catch (error) {
             console.error('Error fetching equipment status:', error);
@@ -213,7 +216,8 @@ class ProactiveAssistant {
         try {
             const response = await fetch(`${this.apiEndpoint}/personnel/status`);
             if (response.ok) {
-                return await response.json();
+                const data = await response.json();
+                return data.personnel || [];
             }
         } catch (error) {
             console.error('Error fetching personnel status:', error);
@@ -522,7 +526,7 @@ class ProactiveAssistant {
                 <span class="alert-time">${new Date().toLocaleTimeString()}</span>
             </div>
             <div class="alert-message">${alert.message}</div>
-            ${alert.actions.length > 0 ? `
+            ${alert.actions && alert.actions.length > 0 ? `
                 <div class="alert-actions">
                     ${alert.actions.map(action => `
                         <button class="alert-action-btn" onclick="window.proactiveAssistant.handleAlertAction('${alert.id}', '${action}')">
@@ -671,7 +675,26 @@ class ProactiveAssistant {
     }
     
     speakNotification(alert) {
-        if ('speechSynthesis' in window) {
+        // Check if the main voice assistant is currently speaking
+        if (this.voiceAssistant && this.voiceAssistant.isSpeaking) {
+            console.log('⏳ Delaying alert speech - main assistant is speaking');
+            // Wait and retry until speech finishes
+            const checkAndSpeak = () => {
+                if (this.voiceAssistant && !this.voiceAssistant.isSpeaking) {
+                    this.speakNotification(alert);
+                } else {
+                    setTimeout(checkAndSpeak, 500); // Check every 500ms
+                }
+            };
+            setTimeout(checkAndSpeak, 1000); // Initial delay
+            return;
+        }
+        
+        // Use the main voice assistant's speak method to prevent audio feedback
+        if (this.voiceAssistant && this.voiceAssistant.speak) {
+            this.voiceAssistant.speak(`Alert: ${alert.message}`);
+        } else if ('speechSynthesis' in window) {
+            // Fallback to direct speech synthesis if voice assistant not available
             const utterance = new SpeechSynthesisUtterance(
                 `Alert: ${alert.message}`
             );

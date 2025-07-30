@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # OpenAI configuration
-openai.api_key = os.getenv('OPENAI_API_KEY')
+openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 class AirportVoiceAssistant:
     def __init__(self, db_path='united_airlines_normalized.db'):
@@ -142,7 +142,7 @@ class AirportVoiceAssistant:
             
             SQL Query:"""
             
-            response = openai.chat.completions.create(
+            response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200,
@@ -211,7 +211,7 @@ Make the response natural for voice output but don't omit important details. Use
             {instruction}
             """
             
-            response = openai.chat.completions.create(
+            response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=150,
@@ -549,7 +549,7 @@ def improve_transcription():
         Return only the corrected transcript, no explanations.
         """
         
-        response = openai.chat.completions.create(
+        response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=100,
@@ -574,6 +574,36 @@ def improve_transcription():
             "original_transcript": data.get('transcript', ''),
             "improved_transcript": data.get('transcript', '')
         }), 500
+
+@app.route('/api/flights/status', methods=['GET'])
+def flights_status():
+    """Get all flights status"""
+    try:
+        results = assistant.execute_query("SELECT * FROM flights LIMIT 10")
+        return jsonify({"flights": results or []})
+    except Exception as e:
+        logger.error(f"Flights status error: {e}")
+        return jsonify({"error": str(e), "flights": []}), 500
+
+@app.route('/api/personnel/status', methods=['GET'])
+def personnel_status():
+    """Get personnel status"""
+    try:
+        results = assistant.execute_query("SELECT * FROM employees LIMIT 10")
+        return jsonify({"personnel": results or []})
+    except Exception as e:
+        logger.error(f"Personnel status error: {e}")
+        return jsonify({"error": str(e), "personnel": []}), 500
+
+@app.route('/api/equipment/status', methods=['GET'])
+def equipment_status():
+    """Get equipment status"""
+    try:
+        results = assistant.execute_query("SELECT * FROM equipment LIMIT 10")
+        return jsonify({"equipment": results or []})
+    except Exception as e:
+        logger.error(f"Equipment status error: {e}")
+        return jsonify({"error": str(e), "equipment": []}), 500
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=3000) 
