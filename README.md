@@ -21,7 +21,7 @@ A cutting-edge voice-activated AI assistant designed specifically for frontline 
 ## 🏗️ System Architecture
 
 ### Backend (Python/Flask)
-- **Natural Language Processing**: OpenAI GPT-3.5 integration
+- **Natural Language Processing**: OpenAI GPT-3.5-turbo integration
 - **Database Interface**: SQLite with dynamic schema analysis
 - **API Layer**: RESTful endpoints for voice processing
 - **Error Handling**: Confidence-based response filtering

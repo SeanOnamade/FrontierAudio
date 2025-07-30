@@ -173,6 +173,13 @@ class AirportVoiceAssistant:
             )
             
             sql_query = response.choices[0].message.content.strip()
+            
+            # Clean up markdown formatting that GPT-3.5-turbo might add
+            if sql_query.startswith('```sql'):
+                sql_query = sql_query.replace('```sql', '').replace('```', '').strip()
+            elif sql_query.startswith('```'):
+                sql_query = sql_query.replace('```', '').strip()
+            
             return sql_query if sql_query != "NO_DATA" else None
             
         except Exception as e:
@@ -237,7 +244,7 @@ Make the response natural for voice output but don't omit important details. Use
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
+                max_tokens=300,
                 temperature=0.3
             )
             

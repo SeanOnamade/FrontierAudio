@@ -11,7 +11,7 @@ Built a comprehensive voice-activated AI assistant specifically designed for fro
 ## Architecture Overview
 
 ### Backend (Python/Flask)
-- **Natural Language Processing**: OpenAI GPT-3.5 for query understanding and SQL generation
+- **Natural Language Processing**: OpenAI GPT-3.5-turbo for query understanding and SQL generation
 - **Database Layer**: SQLite with dynamic schema analysis and safe query execution
 - **API Design**: RESTful endpoints with comprehensive error handling and latency monitoring
 - **Confidence Scoring**: Automated quality assessment with uncertainty handling

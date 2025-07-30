@@ -1,0 +1,689 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Initialize Repository & Toolchain",
+        "description": "Create monorepo with backend (Python/FastAPI) and frontend (React/Vite) workspaces. Configure package managers, lint/format, pre-commit hooks, CI skeleton.",
+        "details": "• git init, set main branch\n• pnpm / pipenv with lock files\n• Directory layout:\n  /backend  (FastAPI, uvicorn)\n  /frontend (React + TS)\n  /infra    (Docker, terraform stubs)\n• Dockerfile & docker-compose with SQLite volume mount\n• CI: GitHub Actions – lint, unit-test, build images\n• README with local dev commands",
+        "testStrategy": "Run `docker compose up`, hit health endpoint http://localhost:8000/health returns 200. CI passes lint & sample test.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize Git Repository & Monorepo Root",
+            "description": "Create the base Git repository, root configuration and initial commit for the monorepo.",
+            "dependencies": [],
+            "details": "• git init and create main branch\n• Add .gitignore covering Python, Node, VSCode, macOS and Docker artifacts\n• Create root README.md with project overview and contributor guidelines placeholder\n• Establish directory skeleton: /backend, /frontend, /infra, /data, /.github\n• Add LICENSE (MIT unless specified otherwise)\n• Commit all above as “chore(repo): initial commit”",
+            "status": "pending",
+            "testStrategy": "Run `git status` shows clean working tree. Verify directories exist and README contains high-level sections."
+          },
+          {
+            "id": 2,
+            "title": "Bootstrap Backend Workspace (Python/FastAPI)",
+            "description": "Scaffold backend service, dependency manager and code-quality tooling.",
+            "dependencies": [],
+            "details": "• Inside /backend run `pipenv --python 3.11` then install FastAPI, uvicorn[standard]\n• Generate Pipfile.lock with `pipenv lock`\n• Scaffold FastAPI app: main.py exposing GET /health returning {\"status\":\"ok\"}\n• Add tests/ with pytest sample checking /health returns 200\n• Configure lint/format:\n  – black, isort, flake8 in dev dependencies\n  – pyproject.toml with shared config\n• Add pre-commit config entries for black, isort, flake8 (to be activated later)\n• Commit as “feat(backend): scaffold FastAPI service”",
+            "status": "pending",
+            "testStrategy": "In /backend run `pipenv run pytest` succeeds. Running `pipenv run uvicorn main:app --reload` then hitting /health returns 200 JSON."
+          },
+          {
+            "id": 3,
+            "title": "Bootstrap Frontend Workspace (React/Vite + pnpm)",
+            "description": "Create React + TypeScript frontend, package manager config and JS/TS code-quality tooling.",
+            "dependencies": [],
+            "details": "• At repo root run `pnpm init` to create root package.json with `workspaces:[\"frontend\"]`\n• Inside /frontend run `pnpm create vite@latest` (react-ts template)\n• Configure eslint, prettier and @typescript-eslint; add scripts `lint` and `format`\n• Generate .eslintrc.cjs and .prettierrc with agreed rules\n• Add sample component calling /api/health and printing response\n• Commit as “feat(frontend): scaffold React Vite workspace”",
+            "status": "pending",
+            "testStrategy": "Run `pnpm --filter frontend dev` — app loads at http://localhost:5173 and health call succeeds when backend running. Execute `pnpm lint` shows zero errors."
+          },
+          {
+            "id": 4,
+            "title": "Add Containerization & Orchestration",
+            "description": "Provide Dockerfiles for each service and a docker-compose stack for local development, including persistent SQLite volume.",
+            "dependencies": [],
+            "details": "• /backend/Dockerfile: python:3.11-slim, copy source, install via pipenv, expose 8000, CMD uvicorn\n• /frontend/Dockerfile: node:20-alpine, build Vite app, serve with nginx or vite preview\n• docker-compose.yml at root:\n  – backend service building /backend image, maps 8000:8000\n  – frontend service building /frontend image, maps 3000:80\n  – bind-mount ./data to /data inside backend container for united_airlines_normalized.db\n• Define named volume sqlite_data for persistence\n• Add Makefile targets `make dev` (compose up) & `make clean`\n• Commit as “chore(dev-env): docker & compose setup”",
+            "status": "pending",
+            "testStrategy": "Run `docker compose up -d`, wait for containers, curl http://localhost:8000/health returns 200. Frontend served at http://localhost:3000 shows page."
+          },
+          {
+            "id": 5,
+            "title": "Configure Developer Workflow: Pre-Commit & CI Skeleton",
+            "description": "Wire up pre-commit hooks and GitHub Actions pipelines for linting, tests and image builds, plus finalize README.",
+            "dependencies": [],
+            "details": "• Activate pre-commit: `pre-commit install` at root linking to config that runs black, isort, flake8, eslint, prettier\n• /.github/workflows/ci.yml with jobs:\n  – setup-python & run backend lint+tests\n  – setup-node & run frontend lint+unit tests\n  – build backend/frontend Docker images and push to GHCR (if GH_PAT available)\n• Add status badge to README and document local dev commands (`pipenv shell`, `pnpm dev`, `docker compose up`)\n• Commit as “ci: add GitHub Actions & pre-commit hooks”",
+            "status": "pending",
+            "testStrategy": "Push branch to GitHub; workflow passes all jobs. Run `pre-commit run --all-files` locally to ensure zero failures. README displays correct commands when rendered."
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Integrate united_airlines_normalized.db",
+        "description": "Add read-only data access layer to SQLite database used for answering queries.",
+        "details": "• Place DB inside /data; set env var DB_PATH\n• SQLAlchemy models or simple raw SQL views for: flights, equipment, personnel, shifts, breaks\n• Create DAL class with memoized prepared statements for sample queries\n• Index critical columns (flight_no, gate, employee_id) for <10ms lookup\n• Provide DAO methods: get_flight_status, get_equipment_by_flight, get_employee_phone, etc.",
+        "testStrategy": "Unit tests with pytest & SQLite in-memory copy. Assert queries return expected rows matching PRD examples.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add database file and configuration",
+            "description": "Copy united_airlines_normalized.db into the repository, mount it at /data in Docker, and expose its location through the DB_PATH environment variable for both local and containerised execution.",
+            "dependencies": [],
+            "details": "• Create /data directory at repo root and place united_airlines_normalized.db inside it.\n• Update .gitignore so the DB is not ignored.\n• In docker-compose.yml and backend Dockerfile, add a volume mapping ./data:/app/data and ENV DB_PATH=/app/data/united_airlines_normalized.db.\n• For local runs, add `export DB_PATH=\"$(pwd)/data/united_airlines_normalized.db\"` to backend/.env or dev script.\n• Verify file accessibility with `python -c 'import os,sqlite3,sys; sqlite3.connect(os.getenv(\"DB_PATH\")); print(\"ok\")'`.",
+            "status": "pending",
+            "testStrategy": "Run `docker compose up -d backend` then exec into the container and execute `sqlite3 $DB_PATH '.tables'`; expect tables flights, equipment, personnel, shifts, breaks to be listed."
+          },
+          {
+            "id": 2,
+            "title": "Define read-only schema models or SQL views",
+            "description": "Expose logical tables (flights, equipment, personnel, shifts, breaks) via SQLAlchemy declarative models or, if preferred, create immutable SQL views referencing the existing tables.",
+            "dependencies": [
+              "2.1"
+            ],
+            "details": "• In backend/db/models.py create SQLAlchemy Base.\n• Use reflection (automap) or explicit model definitions matching existing columns and primary keys.\n• Mark all models with __tablename__, primary_key, and nullable flags; set __table_args__ = {'sqlite_autoincrement': False}.\n• Alternatively, execute CREATE VIEW statements if the physical tables need renaming/aliasing.\n• Ensure models are read-only by not exposing session add/commit; only `Session(bind=engine, autoflush=False, autocommit=False)` for SELECT.",
+            "status": "pending",
+            "testStrategy": "Instantiate a session and query each model: `session.query(Flights).limit(1).all()` etc. Assert no exceptions and objects have expected attribute names."
+          },
+          {
+            "id": 3,
+            "title": "Implement Data Access Layer with memoized prepared statements",
+            "description": "Create a DAL/DAO class that opens a single SQLAlchemy engine against DB_PATH and exposes high-level read methods (get_flight_status, get_equipment_by_flight, get_employee_phone, …). Prepared statements should be compiled once and cached.",
+            "dependencies": [
+              "2.2"
+            ],
+            "details": "• backend/db/dal.py: define class `AirlineDAL`.\n• On `__init__`, build `self.engine = create_engine(f'sqlite:///{DB_PATH}', connect_args={'check_same_thread': False})` and `self.sessionmaker = sessionmaker(bind=self.engine)`.\n• Use `functools.lru_cache(maxsize=None)` or a class-level dict to cache `text()` compiled statements, e.g. `SELECT status FROM flights WHERE flight_no = :flight_no LIMIT 1`.\n• Methods should open a session context (`with self.sessionmaker() as s:`) and execute cached statements with parameters, returning domain objects or dicts.\n• Add graceful error handling for missing rows (return None).",
+            "status": "pending",
+            "testStrategy": "Call each DAO method with a known key from seed data; assert returned value matches direct SQL query result."
+          },
+          {
+            "id": 4,
+            "title": "Create performance indexes on critical columns",
+            "description": "Add SQLite indexes for flight_no, gate, and employee_id to guarantee sub-10 ms lookups for typical query sizes.",
+            "dependencies": [
+              "2.2"
+            ],
+            "details": "• In backend/db/migrations/0001_add_indexes.sql write:\n  CREATE INDEX IF NOT EXISTS idx_flights_flight_no ON flights(flight_no);\n  CREATE INDEX IF NOT EXISTS idx_flights_gate ON flights(gate);\n  CREATE INDEX IF NOT EXISTS idx_personnel_employee_id ON personnel(employee_id);\n• Execute the script during container start-up (ENTRYPOINT sh that runs `sqlite3 $DB_PATH < migrations/0001_add_indexes.sql`).\n• Verify existence with `PRAGMA index_list('flights')` etc.\n• Benchmark with `EXPLAIN QUERY PLAN` and Python perf test; assert average <10 ms over 1 000 randomized queries.",
+            "status": "pending",
+            "testStrategy": "Run pytest benchmark that executes get_flight_status 1 000 times; assert mean duration <0.01 s and that `PRAGMA index_info` shows expected columns."
+          },
+          {
+            "id": 5,
+            "title": "Write unit tests and CI integration for DAL",
+            "description": "Cover all DAO methods with pytest using an in-memory copy of the production DB and integrate the tests into the existing GitHub Actions workflow.",
+            "dependencies": [
+              "2.3",
+              "2.4"
+            ],
+            "details": "• Add backend/tests/test_dal.py.\n• In tests, create a temporary SQLite :memory: connection and `conn.executescript(open(DB_PATH).read())` to copy schema & data.\n• Monkeypatch AirlineDAL.DB_PATH to point to the :memory: database.\n• Parametrize tests for each DAO method with sample inputs/expected outputs derived from fixture rows.\n• Add performance test (pytest-benchmark) ensuring ≤10 ms average query time.\n• Update .github/workflows/backend.yml to run `pytest -q`.",
+            "status": "pending",
+            "testStrategy": "CI run must pass all dal tests with >95% coverage; deliberately break a DAO query locally to confirm tests fail."
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Natural Language Query Parser & Answer Generator",
+        "description": "Translate user utterances into structured DB queries and craft spoken answers with confidence scores.",
+        "details": "• Use spaCy + rule-based regex + few-shot OpenAI function calling (NO internet knowledge retrieval) but pass schema so answers only from DB\n• Pipeline: intent detection ➜ slot extraction ➜ DAO call ➜ structured result ➜ answer template\n• Confidence: if intent score <0.75 or DAO returns none ⇒ fallback\n• Pseudocode:\n```python\nresult,intent_score=parse(utterance)\nif intent_score<0.75 or not result:\n    return Answer(text=\"I don't know\", confidence=intent_score)\n```\n• Unit templates for each Q type stored as Jinja2.",
+        "testStrategy": "Parametrized tests for provided test questions – expect exact answers. Add fuzzed paraphrases checking ≥0.9 bleu match.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Intent Detection Module",
+            "description": "Create a component that classifies user utterances into predefined intent labels and returns a confidence score.",
+            "dependencies": [],
+            "details": "• Build a spaCy pipeline with custom text-categorizer component trained on annotated intents.\n• Add rule-based regex matchers for high-precision patterns (e.g., ^how many, ^list all …).\n• Wrap few-shot OpenAI function-calling fallback: pass utterance + intent schema, parse model response to {intent,score}.\n• Combine scores via weighted average; expose function detect_intent(text)->(intent,score).",
+            "status": "pending",
+            "testStrategy": "Unit: parametrized pytest with 50 labeled utterances, assert predicted intent == gold and score>=0.75 for ≥90% of cases.\nStress: fuzz 200 paraphrases via NL paraphraser, ensure no crash and score is float between 0–1."
+          },
+          {
+            "id": 2,
+            "title": "Develop Slot Extraction & Entity Parsing",
+            "description": "Extract required entities/slots from the utterance based on the detected intent.",
+            "dependencies": [
+              "3.1"
+            ],
+            "details": "• For each intent, define slot schema (e.g., {product_name,date_range}).\n• Use spaCy NER models + custom EntityRuler patterns; attach regex post-processing for dates, numbers.\n• If slots missing or ambiguous, call OpenAI function that returns structured slot dict restricted to schema.\n• Output parse_slots(text,intent)->(slots:dict,missing:list).",
+            "status": "pending",
+            "testStrategy": "Unit: provide 30 utterances per intent with expected slot dict; assert exact match.\nEdge: missing slot input should return in missing list."
+          },
+          {
+            "id": 3,
+            "title": "Build DAO Query Builder & Executor",
+            "description": "Convert intent and extracted slots into parameterized SQL queries and fetch results from the database.",
+            "dependencies": [
+              "3.2"
+            ],
+            "details": "• Map each intent to SQL template with named params.\n• Implement QueryBuilder that fills template with slot values, guarding against SQL injection via parameter binding.\n• Create DAO layer using async SQLAlchemy; execute query, return result as list[dict].\n• Handle empty result with None.",
+            "status": "pending",
+            "testStrategy": "Integration: spin up Docker Postgres with seed data; for each intent/slot pair run builder+DAO, assert returned rows match fixtures.\nSecurity: attempt SQL injection in slots, verify parameter binding prevents it."
+          },
+          {
+            "id": 4,
+            "title": "Design Answer Template Renderer",
+            "description": "Generate natural-language answers from structured DAO results using Jinja2 templates.",
+            "dependencies": [
+              "3.3"
+            ],
+            "details": "• For each intent, create Jinja2 template files (e.g., templates/answers/<intent>.j2) with placeholders for result fields.\n• Implement render_answer(intent,result)->text that loads template, supplies context, and falls back to generic ‘no data’ template if result None.\n• Support pluralization & numeric formatting helpers.",
+            "status": "pending",
+            "testStrategy": "Unit: snapshot test rendering for sample results; compare against stored golden strings.\nPluralization test: singular vs plural counts produce grammatically correct output."
+          },
+          {
+            "id": 5,
+            "title": "Integrate End-to-End Parser & Answer Generator with Confidence Logic",
+            "description": "Orchestrate intent detection, slot extraction, DAO call, and template rendering into a single pipeline that returns Answer objects with confidence handling.",
+            "dependencies": [
+              "3.4"
+            ],
+            "details": "• Implement parse_and_answer(utterance)->Answer dataclass {text,confidence}.\n• Steps: (1) intent,score=detect_intent; (2) slots=extract_slots; (3) result=query_DAO; (4) text=render_answer.\n• Apply fallback rules: if score<0.75 or result is None -> text=\"I don't know\".\n• Expose REST endpoint POST /api/nlq {utterance} returning JSON Answer.\n• Add logging of intermediate artifacts for metrics task.",
+            "status": "pending",
+            "testStrategy": "End-to-end tests: feed 20 utterances, assert HTTP 200 and expected text.\nFallback test: force low intent score & empty result, expect \"I don't know\" with propagated confidence.\nPerformance: ensure avg latency <500 ms excluding OpenAI calls."
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Wake-Word Detection Service",
+        "description": "Always-on wake word listener for \"Jarvis\" / \"Hey Jarvis\" with <100ms detection.",
+        "details": "• Integrate Picovoice Porcupine WASM in browser for on-device detection (no network latency)\n• Expose Boolean state to React context; start streaming audio only after wake detected\n• Sensitivity 0.6, keyword model JARVIS.ppn",
+        "testStrategy": "Manual: speak sentences containing and not containing wake word 50 times; expect ≥95% correct. Automated: play pre-recorded wav files in jest test with Porcupine node binding.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Add Picovoice Porcupine WASM assets and loader",
+            "description": "Install Porcupine JS SDK, place JARVIS.ppn model in public assets, and create an async loader that initializes the Porcupine WASM engine with the specified sensitivity (0.6).",
+            "dependencies": [],
+            "details": "• Add `@picovoice/porcupine-web-en-worker` (or latest) to /frontend via pnpm.\n• Copy `JARVIS.ppn` into `/frontend/public/models`.\n• Implement `porcupineLoader.ts` that:\n   – Dynamically imports the WASM worker to avoid blocking main thread.\n   – Accepts config `{keywordPath, sensitivity}` and resolves an initialized engine instance.\n   – Handles graceful failure (e.g., unsupported browser) by throwing descriptive errors.\n• Export singleton promise so engine is created once.\n• Verify engine loads in <50 ms on modern laptop with `performance.now()`.",
+            "status": "pending",
+            "testStrategy": "Unit: mock fetch of WASM + model, assert loader resolves and exposes `process()` method. Measure initialization time <150 ms."
+          },
+          {
+            "id": 2,
+            "title": "Implement Microphone capture and Porcupine processing loop",
+            "description": "Stream microphone PCM frames to Porcupine in a Web Worker, emitting a wake-detected event within 100 ms after spoken phrase.",
+            "dependencies": [
+              "4.1"
+            ],
+            "details": "• Request `getUserMedia({audio: true, video: false})` with echoCancellation disabled.\n• Down-sample to Porcupine’s required sample rate (e.g., 16 kHz) using `AudioWorklet`.\n• In a dedicated worker, call `porcupineWorker.process(frame)` for each 512-sample frame.\n• Post a `{\"type\":\"wake\", \"timestamp\": Date.now()}` message when result==true.\n• Expose an API `startListening()` / `stopListening()` that manages tracks and worker lifecycle.\n• Benchmark end-to-end detection latency with `console.time` around phrase playback; optimize by reducing buffer size until <100 ms.",
+            "status": "pending",
+            "testStrategy": "Integration: play pre-recorded wav containing the wake word through `AudioContext` and assert event received <100 ms after phrase end."
+          },
+          {
+            "id": 3,
+            "title": "Create React Context for wake state",
+            "description": "Provide a `WakeWordProvider` that exposes `{isAwake, reset}` through `useWakeWord()` hook, updating state upon worker events.",
+            "dependencies": [
+              "4.2"
+            ],
+            "details": "• Initialize provider on mount by calling `startListening()` from subtask 4.2.\n• Maintain internal `const [isAwake, setIsAwake] = useState(false)`.\n• On received `wake` event, set `isAwake=true` and start a 10-second timer to auto-reset.\n• Expose `reset()` to manually clear state.\n• Memoize context value with `useMemo` to avoid re-renders.\n• Add SSR guard (check `typeof window !== 'undefined'`).",
+            "status": "pending",
+            "testStrategy": "React Testing Library: render provider, simulate postMessage, expect `isAwake` true, call `reset()` and expect false."
+          },
+          {
+            "id": 4,
+            "title": "Gate downstream audio streaming with wake state",
+            "description": "Modify existing audio streaming module so that it only begins transmitting microphone data to backend after `isAwake` becomes true and stops when reset.",
+            "dependencies": [
+              "4.3"
+            ],
+            "details": "• In `useAudioStreamer()` hook, consume `useWakeWord()`.\n• When `isAwake` flips true, call `startStreaming()` (already implemented in task 3); when false, call `stopStreaming()`.\n• Ensure no audio frames leave the browser before wake detection to preserve privacy and bandwidth.\n• Add exponential back-off reconnect logic so dropped streams restart only if still awake.\n• Log state transitions with `debug` library for observability.",
+            "status": "pending",
+            "testStrategy": "End-to-end browser test (Playwright): speak sentence with wake word → stream WebSocket frames count >0; speak without wake word → frames ==0."
+          },
+          {
+            "id": 5,
+            "title": "Comprehensive testing & tuning for accuracy and latency",
+            "description": "Automate and document validation: ≥95 % accuracy and <100 ms latency using prerecorded samples plus manual runs.",
+            "dependencies": [
+              "4.2",
+              "4.4"
+            ],
+            "details": "• Place 50 positive and 50 negative wav clips in `/tests/audio`.\n• Use `@picovoice/porcupine-node` in Jest to batch-process files, asserting true positives ≥95 % and false positives ≤2 %.\n• Add Playwright script to load app, play clips via virtual mic (Loopback on Mac/VoiceMeeter on Windows), and log detection time with `performance.now()`.\n• Plot confusion matrix and latency histogram, save to `/reports/wake_word.html`.\n• Adjust sensitivity (0.5-0.7 sweep) if thresholds not met; commit final chosen value in `.env`.\n• Document setup and results in `docs/wake_word_testing.md`.",
+            "status": "pending",
+            "testStrategy": "CI step `pnpm test:wake` runs node + Playwright suites; pipeline fails if accuracy or latency thresholds not met."
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Speech-to-Text Capture",
+        "description": "Convert microphone input to text after wake. Aim <800ms recognition latency.",
+        "details": "• Use Web Speech API (Chrome) fallback to Deepgram streaming REST\n• Chunk size 100ms; accumulate until 500ms silence\n• Send final transcript to backend `/api/query`",
+        "testStrategy": "Cypress test: speak canned audio, assert transcript equals expected string (within Levenshtein ≤2). Measure end-to-end time.",
+        "priority": "medium",
+        "dependencies": [
+          4
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Microphone Stream & 100 ms Audio Buffer",
+            "description": "After the wake-word callback fires, request microphone permission, open an AudioWorklet (fallback ScriptProcessor), down-sample to 16 kHz mono, and push raw PCM frames into a ring buffer emitting 100 ms Uint8Array chunks.",
+            "dependencies": [],
+            "details": "• Call navigator.mediaDevices.getUserMedia({audio:true}) and immediately resume the AudioContext to avoid autoplay restrictions.\n• Inside the worklet’s process(), accumulate samples until sampleCount ≥ 1600 (≈100 ms @16 kHz), then postMessage the chunk to main thread.\n• Expose start(), stop(), and abort() controls returning an AsyncIterable so downstream recognisers can `for-await` audio chunks.\n• Include back-pressure (pause reading) when no consumer is attached.",
+            "status": "pending",
+            "testStrategy": "Jest + jest-mock-getusermedia: feed a prerecorded WAV, assert emitted chunk count ≈ recordingLength/100 ms and chunks are 1600 samples long."
+          },
+          {
+            "id": 2,
+            "title": "Primary STT Wrapper using Web Speech API",
+            "description": "Create WebSpeechRecognizer class that subscribes to the chunk stream from 5.1, pipes audio into SpeechRecognition, and exposes ‘partial’ and ‘final’ transcript events with timestamps.",
+            "dependencies": [
+              "5.1"
+            ],
+            "details": "• Feature-detect window.SpeechRecognition / webkitSpeechRecognition; instantiate with interimResults=true, continuous=true.\n• On every `result` event, emit {text, isFinal, startTime, eventTime} to a central EventEmitter.\n• Restart recognition automatically on `end` as long as microphone stream remains active.\n• Measure latency: `eventTime - startTime` and attach to emitted object.",
+            "status": "pending",
+            "testStrategy": "Unit test with a stubbed SpeechRecognition implementation returning scripted interim/final results; assert class re-emits the same text and captures latency values."
+          },
+          {
+            "id": 3,
+            "title": "Deepgram Streaming Fallback Layer",
+            "description": "Implement DeepgramStreamingRecognizer that activates when 5.2 throws or browser lacks SpeechRecognition, sending 100 ms chunks over a websocket to Deepgram and converting JSON responses into the same event schema.",
+            "dependencies": [
+              "5.1"
+            ],
+            "details": "• Open wss://api.deepgram.com/v1/listen?punctuate=true&model=general using fetch API token from env.\n• Marshal each Uint8Array chunk from 5.1 as linear16 PCM and send; await `message` events, parse `channel.alternatives[0]`.\n• Emit partial/final events identical to 5.2 so upper layers stay agnostic.\n• Auto-reconnect with exponential back-off ≤3 attempts.",
+            "status": "pending",
+            "testStrategy": "Integration test against Deepgram sandbox key with 3-second canned WAV; assert final transcript equality (Levenshtein ≤2) and no uncaught promise rejections."
+          },
+          {
+            "id": 4,
+            "title": "Silence Detection & Transcript Finalizer (500 ms)",
+            "description": "Consume transcript events from whichever recognizer is active (5.2 or 5.3) plus raw audio energy from 5.1, detect ≥500 ms of silence to mark utterance end, and guarantee final transcript emission within 800 ms.",
+            "dependencies": [
+              "5.2",
+              "5.3"
+            ],
+            "details": "• Compute RMS energy per 100 ms chunk; maintain sliding 5-chunk window. If all below threshold (configurable, start at ‑50 dB FS), signal ‘silence’.\n• On silence AND last transcript `.isFinal==true`, close current recognizer stream, flush buffers, and resolve a Promise<Transcript> with timing info (speechStart → finalEvent).\n• Use `performance.now()` to enforce a hard timeout: if recognizer hasn’t produced final text within 800 ms after silence, forcibly take the latest interim and mark `lowConfidence=true`.",
+            "status": "pending",
+            "testStrategy": "Simulated audio containing speech-silence-speech pattern; expect finalizer to split into correct utterances and latency histogram median <800 ms."
+          },
+          {
+            "id": 5,
+            "title": "Backend Dispatch & Latency Metrics",
+            "description": "Post finalized transcript to /api/query, include latency fields, and expose an event for UI listeners; retry network failures with exponential back-off (≤3 s total).",
+            "dependencies": [
+              "5.4"
+            ],
+            "details": "• Build payload: {text, speechStart, finalTime, recognitionLatency}.\n• `fetch('/api/query', {method:'POST', body:JSON.stringify(payload)})` with AbortController 2 s timeout.\n• Fire custom DOM event ‘stt:final’ carrying payload so Task 7 UI can add transcript bubble.\n• Record metrics via window.performance.mark/measure and push to window.STTMetrics array for Task 8 collection.",
+            "status": "pending",
+            "testStrategy": "Cypress: mock /api/query with cy.intercept, speak sample audio, assert POST body matches expected transcript and that `recognitionLatency` ≤800 ms."
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Backend Text-to-Speech (TTS) Endpoint",
+        "description": "Return audio (mp3/ogg) of answer strings.",
+        "details": "• Use AWS Polly or Coqui TTS local model for offline\n• Endpoint POST /api/tts {\"text\"}\n• Cache outputs in Redis keyed by hash(text)",
+        "testStrategy": "Unit: send sample and verify 200 + audio bytes length>0. Subjective listening of 5 sentences.",
+        "priority": "medium",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Select & Configure TTS Provider",
+            "description": "Decide between AWS Polly (cloud) and Coqui TTS (offline) and set up corresponding environment so that the rest of the code can call a unified interface.",
+            "dependencies": [],
+            "details": "• Add `TTS_PROVIDER` env var with values `polly` or `coqui`.\n• For AWS Polly: install `boto3`, create IAM user with `polly:SynthesizeSpeech`, store access keys via `.env` or AWS default chain.\n• For Coqui: add `TTS_MODELS_DIR` env var; use `tts` Python package; download a lightweight English model during image build (or at first run) into this dir.\n• Write thin provider classes `PollyProvider` and `CoquiProvider` each exposing `synthesize(text:str, voice:str, fmt:str)->bytes`.\n• Implement factory `get_tts_provider()` that returns the selected provider instance based on env.",
+            "status": "pending",
+            "testStrategy": "Run provider self-tests: call `synthesize('hello', 'default', 'mp3')` and assert byte length > 0 for both providers (mock Polly with `botocore.stub.Stubber`)."
+          },
+          {
+            "id": 2,
+            "title": "Implement Cached TTS Service Module",
+            "description": "Create a service layer that hashes text, checks Redis cache, invokes provider, and stores result with appropriate metadata and TTL.",
+            "dependencies": [
+              "6.1"
+            ],
+            "details": "• Install `redis-py` client; expect `REDIS_URL` env var.\n• Define `hash_text(text:str)->str` using SHA256 and maybe voice+fmt salt.\n• Function `get_or_generate_audio(text, voice='Joanna', fmt='mp3')`:\n    1. `key = f\"tts:{hash_text(text+voice+fmt)}\"`\n    2. If key exists, return cached bytes\n    3. Else call `provider.synthesize(...)`, store in Redis with `SETEX(key, CACHE_TTL, data)`, return bytes.\n• Make TTL configurable (default 30 days).",
+            "status": "pending",
+            "testStrategy": "Pytest with local Redis container: first call should miss, second call should hit. Assert identical byte sequence."
+          },
+          {
+            "id": 3,
+            "title": "Expose POST /api/tts Endpoint",
+            "description": "Add FastAPI route that accepts JSON `{text, voice?, format?}` and streams audio back as `audio/mpeg` or `audio/ogg` with proper headers.",
+            "dependencies": [
+              "6.2"
+            ],
+            "details": "• Create router `tts_router` in `backend/api/tts.py`.\n• Request model: `TTSRequest(text: constr(min_length=1, max_length=1000), voice:str='Joanna', format:Literal['mp3','ogg']='mp3')`.\n• Use `get_or_generate_audio` to fetch bytes.\n• Return `StreamingResponse` with `media_type` mapped from format.\n• Add error handling: 400 for empty text, 413 for >1000 chars.\n• Register router in main `app` under `/api` prefix.",
+            "status": "pending",
+            "testStrategy": "HTTP call using `starlette.testclient`: POST sample text, assert 200, correct `content-type`, and `len(content) > 1000`."
+          },
+          {
+            "id": 4,
+            "title": "Comprehensive Unit & Integration Tests",
+            "description": "Write automated tests covering provider selection, caching logic, and endpoint behavior with mocked external dependencies.",
+            "dependencies": [
+              "6.3"
+            ],
+            "details": "• Use `pytest` + `pytest-asyncio`.\n• Mock AWS Polly with `botocore.stub.Stubber`, mock Coqui by monkeypatching `synthesize` to return dummy bytes.\n• Spin up ephemeral Redis via `pytest-redis` fixture.\n• Endpoint tests: verify cache hit path by inspecting Redis calls.\n• Edge-case tests: empty text, unsupported format, >1000 chars, Redis down (should still synthesize and return 200).",
+            "status": "pending",
+            "testStrategy": "CI executes `pytest -q`; coverage report ≥90% for `backend/tts` package."
+          },
+          {
+            "id": 5,
+            "title": "Docker & CI Integration for TTS Service",
+            "description": "Update Dockerfiles, docker-compose, and GitHub Actions to include TTS dependencies, Redis service, and provider credentials/models.",
+            "dependencies": [
+              "6.4"
+            ],
+            "details": "• Backend Dockerfile: install `boto3`, `redis`, `tts`, download Coqui model via `RUN python -m tts --list_models | head -1 | xargs python -m tts --download`.\n• docker-compose: add `redis` service (alpine image) and mount `TTS_MODELS_DIR` volume.\n• Add build args/envs for AWS keys (passed via secrets in GitHub Actions).\n• Update CI workflow to run Redis, execute tests, and cache Coqui models between runs using actions/cache.\n• Document env variables and sample curl command in `README`.",
+            "status": "pending",
+            "testStrategy": "CI step: `docker compose up -d`, wait, then `curl -X POST localhost:8000/api/tts -d '{\"text\":\"ping\"}' -H 'Content-Type: application/json' --output ping.mp3 && test -s ping.mp3`."
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Frontend Conversation UI",
+        "description": "Single-page web app to display conversation, control mic, and play TTS audio.",
+        "details": "• React components: WakeIndicator, TranscriptBubble, AnswerBubble, LatencyChip\n• WebSocket to backend for streaming\n• Auto-scroll log; show spinner while waiting (<3s SLA)\n• Add disclosure when confidence<0.75",
+        "testStrategy": "Storybook visual tests; Cypress end-to-end – click mic, speak sample, expect bubbles and audio playback.",
+        "priority": "medium",
+        "dependencies": [
+          5,
+          6,
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Bootstrap Conversation SPA and Core Components",
+            "description": "Create the single-page React application shell and stub out all visual components required for the conversation UI.",
+            "dependencies": [],
+            "details": "• Generate a Vite + React + TypeScript project inside /frontend if not already present.\n• Add React Router with single route “/” rendering <ConversationPage/>.\n• Inside ConversationPage scaffold Contexts: ConversationContext (holds messages, pending state) and UiConfigContext (theme, TTS on/off).\n• Implement placeholder functional components (exported individually and in Storybook): WakeIndicator, TranscriptBubble, AnswerBubble, LatencyChip, MicButton. Include minimal props and CSS modules / styled-components.\n• Wire Storybook stories for each component and the page container to enable visual regression tests.",
+            "status": "pending",
+            "testStrategy": "Run Storybook, capture reference screenshots for each component using Chromatic or Percy. Jest snapshot test for component render without crashing."
+          },
+          {
+            "id": 2,
+            "title": "Implement WebSocket Streaming Client & Context Provider",
+            "description": "Create a reusable hook and provider that manages the WebSocket connection to the backend and normalises incoming/outgoing message payloads.",
+            "dependencies": [
+              "7.1"
+            ],
+            "details": "• Add useWebSocket hook (leveraging native WebSocket API or ‘reconnecting-websocket’ npm pkg).\n• Protocol: {type: \"transcript\"|\"answer\", text, confidence?, audioUrl?, latencyMs?}.\n• Expose sendTranscript(text:string) and connectionState via WebSocketContext.\n• Handle incremental backend messages (streaming chunks) by aggregating into final answer.\n• Provide mock server script (ws npm pkg) for local development that echos messages with artificial latency to allow offline testing.",
+            "status": "pending",
+            "testStrategy": "Unit test hook with jest + mock-ws verifying reconnect logic and message aggregation. Cypress test hitting mock server ensuring connection opens, message sent, response received."
+          },
+          {
+            "id": 3,
+            "title": "Conversation Log Rendering, Auto-Scroll & Latency Feedback",
+            "description": "Render the scrolling list of TranscriptBubble and AnswerBubble components, show spinner while awaiting answer (<3 s SLA), and display LatencyChip once response received.",
+            "dependencies": [
+              "7.1",
+              "7.2"
+            ],
+            "details": "• Create <ConversationLog/> component that consumes ConversationContext and maps messages to bubbles.\n• Implement auto-scroll (scrollIntoView on last element within useEffect).\n• When sendTranscript is called, push a ‘pending’ AnswerBubble with spinner; start timer; if backend answer not received within 3 s, visually emphasise spinner (red border) to highlight SLA breach.\n• Once answer arrives, replace spinner with final AnswerBubble and append <LatencyChip latencyMs={msg.latencyMs}/>.\n• Ensure virtualised list (react-window) if >100 messages to keep perf.",
+            "status": "pending",
+            "testStrategy": "Jest DOM tests: send synthetic messages, assert auto-scroll by checking scrollTop. Storybook interaction test: simulate 2 s vs 4 s latency and verify spinner styling. Cypress e2e with mock server returning after 1 s."
+          },
+          {
+            "id": 4,
+            "title": "Mic Control, WakeIndicator Integration & TTS Audio Playback",
+            "description": "Wire microphone button to wake-word service (Task 4) and STT pipeline (Task 5), forward final transcript to backend, and play returned TTS audio streams.",
+            "dependencies": [
+              "7.1",
+              "7.2",
+              "7.3"
+            ],
+            "details": "• Consume WakeWordContext (provided by Task 4) to show WakeIndicator active state.\n• Implement MicButton behaviour: when wake detected or user clicks, start STT capture via SpeechToTextContext (Task 5). Stop capture on silence and call sendTranscript.\n• Upon receiving answer message with audioUrl, create Audio object or use Web Audio API, preload, then play; maintain queue if multiple audios overlap.\n• Persist mute/volume preference in localStorage.\n• Handle browser autoplay policies by requesting user gesture on first play.",
+            "status": "pending",
+            "testStrategy": "Cypress end-to-end: load page, simulate wake word event, inject prerecorded audio, assert TranscriptBubble appears, verify audio element plays (spy on HTMLMediaElement.play). Unit test audio queue logic with jest-fake-timers."
+          },
+          {
+            "id": 5,
+            "title": "Confidence Disclosure & Accessibility Pass",
+            "description": "Display an explicit disclaimer when backend answer confidence < 0.75 and ensure UI meets accessibility guidelines.",
+            "dependencies": [
+              "7.3",
+              "7.4"
+            ],
+            "details": "• Extend AnswerBubble props with confidence?:number. If value <0.75, append small italic text: “(May be inaccurate)” and aria-label conveying same.\n• Add tooltip with explanation triggered on hover or focus.\n• In ConversationLog, announce low-confidence answers via ARIA live region for screen readers.\n• Run axe-core accessibility scan and fix any violations (contrast, keyboard navigation).",
+            "status": "pending",
+            "testStrategy": "Jest test: render AnswerBubble with 0.6 confidence, assert disclaimer text exists. Cypress a11y plugin to scan page. Unit test ARIA live region receives update."
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Latency & Metrics Collection",
+        "description": "Measure time from STT final to TTS stream start and push to Prometheus.",
+        "details": "• Backend middleware timestamps query receipt and TTS start\n• Expose /metrics for Prometheus with histogram bucket ≤3s\n• Frontend send client timestamps for total conversational latency",
+        "testStrategy": "Integration test: mock 100 queries, assert 80th percentile <3s. Grafana dashboard visualization.",
+        "priority": "low",
+        "dependencies": [
+          3,
+          6
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement backend latency timestamping middleware",
+            "description": "Capture precise timestamps for the moment an STT-final transcript is received and the moment the TTS audio-stream starts, and store the delta in request context.",
+            "dependencies": [],
+            "details": "• In the API service (e.g. Node/Express or Python/FastAPI), add a middleware placed immediately after authentication.\n• On POST /api/query (or equivalent) set ctx.sttReceived = process.hrtime.bigint() (nanoseconds).\n• Extend the TTS start routine (first chunk write or websocket ‘start’) to call ctx.ttsStart = process.hrtime.bigint() and compute latencyMs = Number(ctx.ttsStart - ctx.sttReceived) / 1_000_000.\n• Attach latencyMs to the request object or emit an internal event “latencyRecorded” {latencyMs, conversationId} so later code can push it to Prometheus.\n• Make sure the middleware does not block the response path; use async hooks / CLS for context in concurrent environments.",
+            "status": "pending",
+            "testStrategy": "Unit test with jest/pytest: mock request cycle, assert both timestamps exist and delta >0."
+          },
+          {
+            "id": 2,
+            "title": "Add Prometheus histogram and record backend latency",
+            "description": "Integrate Prometheus client library and push the latency metric captured in 8.1 into a histogram with ≤3 s upper bucket.",
+            "dependencies": [
+              "8.1"
+            ],
+            "details": "• Install prom-client (Node) or prometheus-client (Python).\n• Define const sttToTtsLatency = new Histogram({ name: 'stt_to_tts_latency_seconds', help: 'Latency from STT final to TTS start', buckets: [0.1,0.25,0.5,1,2,3] }); // last bucket ≤3 s.\n• In the handler that receives latencyMs from 8.1, call sttToTtsLatency.observe(latencyMs/1000).\n• Register the histogram with the default registry.\n• Ensure high-cardinality labels are avoided; include optional label stage=\"prod|staging\".",
+            "status": "pending",
+            "testStrategy": "Unit test: feed known latencies, scrape metrics endpoint locally, assert _bucket counts increment correctly."
+          },
+          {
+            "id": 3,
+            "title": "Expose /metrics HTTP endpoint for Prometheus scraping",
+            "description": "Create a publicly reachable (but authenticated or IP-restricted) /metrics route that dumps Prometheus metrics, including the histogram from 8.2.",
+            "dependencies": [
+              "8.2"
+            ],
+            "details": "• For Express: app.get('/metrics', async (req,res)=>{ res.set('Content-Type', register.contentType); res.send(await register.metrics()); });\n• For FastAPI: @app.get('/metrics') def metrics(): return PlainTextResponse(generate_latest(REGISTRY)).\n• Add optional basic-auth or network ACL.\n• Update Kubernetes/Compose manifest: add ServiceMonitor or scrape_configs for job_name: ‘tts-service’ with 15 s interval.",
+            "status": "pending",
+            "testStrategy": "Curl /metrics locally; expect HTTP 200 and presence of stt_to_tts_latency_seconds_bucket lines."
+          },
+          {
+            "id": 4,
+            "title": "Collect total conversational latency from frontend",
+            "description": "Instrument the browser app to timestamp wake-word detection, STT final, and TTS playback start, then POST aggregated latency to the backend for Prometheus ingestion.",
+            "dependencies": [
+              "8.1",
+              "8.2"
+            ],
+            "details": "• In React context, on wake-word detection set window.perf.wakeTs = performance.now().\n• On STT final transcript, set perf.sttFinalTs.\n• When audio element starts playing TTS stream, set perf.ttsPlayTs and compute totalLatency = ttsPlayTs - wakeTs.\n• POST JSON {totalLatencyMs, conversationId} to /api/latency.\n• Backend endpoint validates payload and stt_total_latency_seconds.observe(totalLatencyMs/1000) using another histogram with buckets [0.5,1,2,3,5].",
+            "status": "pending",
+            "testStrategy": "Cypress test: stub Date.now() to deterministic values, simulate events, assert POST body and backend metric increment."
+          },
+          {
+            "id": 5,
+            "title": "Integration load test & Grafana dashboard",
+            "description": "Automate 100-query load test, verify 80th percentile <3 s, and create Grafana panel visualizing both backend and total latencies.",
+            "dependencies": [
+              "8.3",
+              "8.4"
+            ],
+            "details": "• Write k6 or Locust script that calls /api/query, waits for websocket frame ‘tts_start’, records latency; run 100 iterations.\n• After run, scrape Prometheus /api/v1/query_quantile(0.8, stt_to_tts_latency_seconds) and assert <3.\n• Provision Grafana dashboard JSON with 2 histogram panels + 1 percentile graph; commit to repo under grafana/latency_dashboard.json.\n• Optional alert rule: if 0.9 quantile >3 s for 5 m, fire ‘High Latency’.",
+            "status": "pending",
+            "testStrategy": "CI job executes k6 script; fails pipeline if assertion violated. Manually open Grafana URL to confirm panels render."
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Confidence & Clarification Logic",
+        "description": "Implement fallback ‘I don’t know’ or ask clarifying question when confidence low.",
+        "details": "• Extend AnswerGenerator: if 0.4<conf<0.75 => ask follow-up based on missing slot; <0.4 => plain I don’t know\n• Maintain session context to handle follow-up replies.",
+        "testStrategy": "Unit tests: feed ambiguous queries and assert follow-up question generated. Acceptance: manual dialogue.",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Refactor AnswerGenerator to Support Response Types & Confidence Flags",
+            "description": "Extend the existing AnswerGenerator interface to return a structured object that contains the generated answer text, numeric confidence score, and a new enum `response_type` with values [`ANSWER`, `CLARIFY`, `FALLBACK`].  All downstream logic (API layer, Web-socket dispatcher, etc.) must be updated to consume the new shape without breaking current behaviour.",
+            "dependencies": [],
+            "details": "• Create `ResponseType` enum in `answer_generator/types.py`.\n• Update `Answer` dataclass to include `response_type: ResponseType`.\n• Modify all internal call sites (controller, web handlers, unit tests) to use the new field.\n• Keep default `response_type=ANSWER` when not explicitly set so existing tests pass.\n• Add migration notes in CHANGELOG.",
+            "status": "pending",
+            "testStrategy": "Unit: assert that a high-confidence query returns `response_type==ANSWER`. Contract test: JSON schema validation for API `/api/query` response."
+          },
+          {
+            "id": 2,
+            "title": "Implement Low-Confidence Fallback (<0.4) Logic",
+            "description": "Add logic that classifies any response whose confidence score is <0.40 as `FALLBACK` and generates the canonical \"I’m not sure about that\" answer text.",
+            "dependencies": [
+              "9.1"
+            ],
+            "details": "• In `answer_generator/strategies.py`, after computing confidence, branch: if `conf < 0.4` ➜ set `response_type=FALLBACK`, `text=\"I’m not sure about that.\"`.\n• Make threshold value `CONF_FALLBACK_THRESHOLD` configurable via env var with default 0.4.\n• Ensure no DB look-ups are executed after selecting fallback to save latency.",
+            "status": "pending",
+            "testStrategy": "Pytest parameterised: pass synthetic queries with forced low confidence scores, assert `response_type==FALLBACK` and text matches exactly."
+          },
+          {
+            "id": 3,
+            "title": "Generate Clarifying Questions for Medium Confidence (0.4–0.75)",
+            "description": "When confidence is between 0.40 and 0.75, identify missing slots in the parsed query and craft an explicit follow-up question to clarify the user’s intent, marking the response as `CLARIFY`.",
+            "dependencies": [
+              "9.1"
+            ],
+            "details": "• Extend parser output to include `required_slots` vs `filled_slots`.\n• Implement `clarification_builder.build(slot_name)` that maps each slot to a human-readable question (e.g., slot `flight_no` ➜ \"Which flight number are you asking about?\").\n• In AnswerGenerator, if `0.4 <= conf < 0.75` and there is at least one missing required slot, pick highest-priority missing slot and call builder.\n• Set `response_type=CLARIFY` and store `pending_slot` metadata in the Answer payload.",
+            "status": "pending",
+            "testStrategy": "Unit: feed a query with ambiguous flight reference, assert returned question references the missing slot and `response_type==CLARIFY`."
+          },
+          {
+            "id": 4,
+            "title": "Add Session Context Manager for Follow-Up Handling",
+            "description": "Maintain conversational state so that answers to clarifying questions are merged with the original query on the next turn.  Persist pending slots, original utterance, and timestamp inside a short-lived session object (Redis or in-memory for MVP).",
+            "dependencies": [
+              "9.2",
+              "9.3"
+            ],
+            "details": "• Implement `SessionContext` class with fields: `session_id`, `original_query`, `pending_slots`, `expires_at`.\n• Wire context storage into FastAPI dependency that injects the manager on each request.\n• On receiving a user reply, check if session has `pending_slots`; if so, merge new slot values and rerun AnswerGenerator in `ANSWER` mode.\n• Auto-expire sessions after 5 min or when all slots filled.",
+            "status": "pending",
+            "testStrategy": "Integration test using Starlette TestClient: simulate 3-turn conversation (ambiguous ➜ clarify ➜ final answer) and assert correct progression of response types."
+          },
+          {
+            "id": 5,
+            "title": "End-to-End Dialogue Tests & Threshold Tuning",
+            "description": "Create comprehensive test suite and scripts that validate the complete confidence & clarification flow, and fine-tune threshold values based on empirical data.",
+            "dependencies": [
+              "9.2",
+              "9.3",
+              "9.4"
+            ],
+            "details": "• Build dialogue test harness that plays predefined utterance sequences and captures API responses.\n• Include cases: high-confidence direct answer, low-confidence fallback, medium-confidence clarification followed by successful answer, and session timeout.\n• Record latency and accuracy metrics; adjust `CONF_FALLBACK_THRESHOLD` & `CONF_CLARIFY_THRESHOLD` (default 0.75) if needed.\n• Document results in `/docs/confidence_tuning.md`.",
+            "status": "pending",
+            "testStrategy": "Run test harness in CI; fail build if any dialogue path deviates from expected `response_type` sequence or message content."
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "End-to-End Demo & Deployment",
+        "description": "Dockerized deployment to AWS Fargate + CloudFront for frontend, plus demo recording scripts.",
+        "details": "• `docker compose -f prod.yml` build\n• CD pipeline pushes image to ECR, Terraform ECS service, S3 + CloudFront\n• Script `scripts/record_demo.sh` using ffmpeg to capture browser & mic\n• Write <1page technical summary and hours spent",
+        "testStrategy": "Smoke test on staging URL: open site, say test Q, hear correct answer. Record 3-minute video and verify playback.",
+        "priority": "medium",
+        "dependencies": [
+          8,
+          9,
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Production Docker Build & Local Validation",
+            "description": "Create optimized multi-stage Dockerfiles for backend and frontend, add prod-ready docker-compose file, and validate the stack locally.",
+            "dependencies": [],
+            "details": "• Refactor existing Dockerfiles into multi-stage builds (builder → runtime) with non-root user and healthcheck.\n• Add docker-compose.prod.yml referencing the built images, env vars, secrets, and a SQLite volume.\n• Enable BuildKit and .dockerignore to minimize context.\n• Provide make targets: `make build-prod` and `make run-prod`.\n• Update README with one-liner for local smoke test.",
+            "status": "pending",
+            "testStrategy": "Run `docker compose -f docker-compose.prod.yml up -d`; hit http://localhost:8000/health and / (frontend) expecting HTTP 200 within 5 s."
+          },
+          {
+            "id": 2,
+            "title": "CI/CD Pipeline: Build & Push Image to ECR",
+            "description": "Automate building the production image and publishing it to AWS Elastic Container Registry on every push to main.",
+            "dependencies": [
+              "10.1"
+            ],
+            "details": "• Create `.github/workflows/cd.yml` with jobs: checkout → set-up QEMU/buildx → login to ECR via AWS OIDC → build & push image tagged with `${{ github.sha }}` and `latest`.\n• Store AWS account, region, and repo name as GitHub secrets.\n• Cache Docker layers for faster builds.\n• Post-build step: upload image digest as workflow artifact for Terraform.\n• Document manual trigger using workflow_dispatch.",
+            "status": "pending",
+            "testStrategy": "Push a dummy commit; verify workflow passes and image appears in ECR with both tags; pull image locally and run `docker run` healthcheck."
+          },
+          {
+            "id": 3,
+            "title": "Terraform AWS Infrastructure (ECS Fargate + S3/CloudFront)",
+            "description": "Provision all cloud resources required for the demo using Terraform and hook them into the CD pipeline.",
+            "dependencies": [
+              "10.2"
+            ],
+            "details": "• Under /infra, add Terraform modules: networking (VPC, subnets), IAM roles, ECS cluster + task definition referencing `${aws_ecr_repository.app.repository_url}:latest`, Application Load Balancer, and ECS Service (Fargate 0.25 vCPU / 0.5 GB).\n• Create S3 bucket for frontend build artifacts and enable static hosting; generate CloudFront distribution with OAI, default root object index.html, TLS via ACM (us-east-1).\n• Configure CloudFront invalidation GitHub Action step post-deploy.\n• Store remote state in S3 with dynamo DB lock.\n• Provide `make deploy` wrapper executing `terraform init/plan/apply`.\n• Output variables: api_url, frontend_url, cloudfront_domain.",
+            "status": "pending",
+            "testStrategy": "Run `terraform apply` in a temp AWS account; check ECS service health in console; curl `${cloudfront_domain}` returns index.html; open `${api_url}/health` returns 200."
+          },
+          {
+            "id": 4,
+            "title": "Demo Recording Script with FFmpeg",
+            "description": "Create cross-platform bash script `scripts/record_demo.sh` to record browser window, microphone, and cursor, saving an MP4 ready for publication.",
+            "dependencies": [
+              "10.3"
+            ],
+            "details": "• For Linux: use `xvfb-run google-chrome --remote-debugging-port=9222 <URL>` then `ffmpeg -f x11grab -video_size 1920x1080 -i $DISPLAY -f pulse -i default -c:v libx264 -preset veryfast -c:a aac -b:a 128k demos/demo_$(date +%Y%m%d_%H%M%S).mp4`.\n• For macOS: detect OS; fall back to `ffmpeg -f avfoundation -i \"<screen index>:<mic index>\" ...`.\n• Accept CLI args: `--url`, `--duration`, `--outfile`.\n• Add README section and install instructions (`brew install ffmpeg` / `apt-get install ffmpeg`).\n• Provide Make target `make record-demo` that opens CloudFront URL and records 180 s.",
+            "status": "pending",
+            "testStrategy": "Run script for 10 s; verify output file exists, plays video + audio, and size >0 MB. Use `ffprobe` to assert video & audio streams present."
+          },
+          {
+            "id": 5,
+            "title": "Smoke Test, Demo Capture & Technical Summary",
+            "description": "Execute end-to-end smoke test on the staging URL, record demo video, and write <1-page technical summary including time spent.",
+            "dependencies": [
+              "10.4"
+            ],
+            "details": "• Open `${frontend_url}` from Terraform output; ask sample question (e.g., \"What gate is flight UA12 at?\") and confirm correct TTS response.\n• If pass, run `make record-demo --duration 180` to capture full walkthrough; commit resulting MP4 under /docs/demos or upload to S3 public bucket and link.\n• Draft `docs/technical_summary.md` (<300 words) covering architecture, deployment flow, and total hours logged per subtask; include link to video.\n• Add both artifacts to PR and tag stakeholders.",
+            "status": "pending",
+            "testStrategy": "1. Manual: Follow smoke-test script, ensure bubbles render and audio plays within 3 s.\n2. Confirm summary length ≤1 page via `wc -w`.\n3. Reviewer downloads MP4 and watches first 30 s without glitches."
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-30T19:29:06.298Z",
+      "updated": "2025-07-30T19:29:06.298Z",
+      "description": "Tasks for master context"
+    }
+  }
+}
