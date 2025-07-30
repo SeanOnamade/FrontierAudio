@@ -101,17 +101,24 @@ class AirportVoiceAssistant:
             # Language-specific prompts
             language_prompts = {
                 'en': {
-                    'instruction': "You are an AI assistant that converts natural language queries about airport operations into SQL queries.",
+                    'instruction': "You are an AI assistant that converts natural language queries about airport operations into SQLite queries.",
                     'examples': [
                         '"What is the status of flight UA2406?" -> SELECT * FROM flights WHERE flight_number = \'UA2406\';',
-                        '"What ramp team members are on break now?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';'
+                        '"What ramp team members are on break now?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';',
+                        '"What flights are delayed?" -> SELECT * FROM flights WHERE status LIKE \'%delay%\';',
+                        '"Are there any flights delayed today?" -> SELECT * FROM flights WHERE status LIKE \'%delay%\';',
+                        '"What flights are on time now?" -> SELECT * FROM flights WHERE status LIKE \'%time%\';',
+                        '"Show me all United Airlines flights" -> SELECT * FROM flights WHERE airline = \'United Airlines\';',
+                        '"What equipment is available?" -> SELECT * FROM equipment WHERE status = \'available\';',
+                        '"Who is working in baggage handling?" -> SELECT * FROM employees WHERE department = \'baggage\';'
                     ]
                 },
                 'es': {
-                    'instruction': "Eres un asistente de IA que convierte consultas en lenguaje natural sobre operaciones aeroportuarias en consultas SQL.",
+                    'instruction': "Eres un asistente de IA que convierte consultas en lenguaje natural sobre operaciones aeroportuarias en consultas SQLite.",
                     'examples': [
                         '"¿Cuál es el estado del vuelo UA2406?" -> SELECT * FROM flights WHERE flight_number = \'UA2406\';',
-                        '"¿Qué miembros del equipo de rampa están en descanso?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';'
+                        '"¿Qué miembros del equipo de rampa están en descanso?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';',
+                        '"¿Qué vuelos están retrasados hoy?" -> SELECT * FROM flights WHERE status LIKE \'%delay%\' AND date(scheduled_departure) = date(\'now\');'
                     ]
                 },
                 'fr': {
@@ -129,12 +136,28 @@ class AirportVoiceAssistant:
             prompt = f"""
             {lang_config['instruction']}
             
+            IMPORTANT: Generate SQLite-compatible SQL queries only. Available tables and key columns:
+            - flights: flight_number, airline, status, departure_gate, arrival_gate, scheduled_departure, actual_departure, aircraft_type
+            - employees: employee_id, first_name, last_name, department, role, status, current_location, phone_number
+            - equipment: equipment_id, equipment_type, current_location, status, assigned_flight, operator_id
+            - gates: gate_number, terminal, status, current_flight
+            - assignments: flight_number, employee_id, equipment_id, assignment_type, status
+            
+            Use simple SQLite syntax:
+            - Use LIKE for status queries (case insensitive): status LIKE '%delay%', status LIKE '%board%'
+            - Use = for exact matches: flight_number = 'UA2406'
+            - Use || for concatenation: first_name || ' ' || last_name
+            - Always use LIKE when searching for status, department, or descriptive fields
+            - For operational questions about "today", "now", or "current", focus on STATUS rather than dates
+            - When users ask about delayed/on-time flights "today", they want current operational status regardless of schedule date
+            - Avoid date filters unless specifically asking for flights on a particular date
+            
             Database Schema:
             {schema_text}
             {context_prompt}
             User Query: "{user_query}"
             
-            Convert this to a SQL query. Only return the SQL query, nothing else.
+            Convert this to a SQLite-compatible SQL query. Only return the SQL query, nothing else.
             If the query cannot be answered with the available data, return "NO_DATA".
             
             Examples:
@@ -606,4 +629,4 @@ def equipment_status():
         return jsonify({"error": str(e), "equipment": []}), 500
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=3000) 
+    app.run(debug=False, host='localhost', port=3000) 
