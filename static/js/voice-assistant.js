@@ -11,7 +11,8 @@ class VoiceAssistant {
         this.commandTimeout = null; // Timer for processing commands
         this.processingLock = false; // Prevent multiple processing attempts
         this.lastWakeWordTime = 0; // Timestamp of last wake word detection
-        this.globalCooldown = 8000; // 8 second global cooldown between wake words
+        this.globalCooldown = 500; // 0.5 second cooldown between wake words
+        this.microphoneTested = false; // Track if microphone has been tested
         
         // Enhanced features
         this.languageManager = null;
@@ -164,21 +165,68 @@ class VoiceAssistant {
     
     initializeSpeechRecognition() {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            console.error('Speech recognition not supported');
-            if (this.onError) {
-                this.onError('Speech recognition is not supported in this browser.');
-            }
-            return;
+            console.error('Speech recognition not supported in this browser');
+            this.showError('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.');
+            return false;
         }
-        
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         this.recognition = new SpeechRecognition();
         
-        // Configure recognition
+        // Enhanced configuration
         this.recognition.continuous = this.config.continuous;
         this.recognition.interimResults = this.config.interimResults;
         this.recognition.lang = this.config.language;
         this.recognition.maxAlternatives = this.config.maxAlternatives;
+        
+        // Add error handling
+        this.recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            
+            switch(event.error) {
+                case 'no-speech':
+                    console.log('No speech was detected. Try speaking more clearly.');
+                    // Don't treat this as a critical error - just restart
+                    break;
+                case 'audio-capture':
+                    console.error('No microphone found or microphone access denied.');
+                    this.showError('Microphone access denied. Please allow microphone access and refresh the page.');
+                    this.isListening = false;
+                    return;
+                case 'not-allowed':
+                    console.error('Microphone permission denied by user.');
+                    this.showError('Please allow microphone access in your browser settings and refresh the page.');
+                    this.isListening = false;
+                    return;
+                case 'network':
+                    console.error('Network error occurred.');
+                    this.showError('Network error. Please check your internet connection.');
+                    break;
+                case 'aborted':
+                    console.log('Speech recognition was aborted.');
+                    // Don't treat abort as critical error - often happens during normal operation
+                    break;
+                default:
+                    console.error('Speech recognition error:', event.error);
+                    this.showError(`Speech recognition error: ${event.error}`);
+            }
+            
+            // Only update state if not currently processing or speaking
+            if (!this.isProcessing && !this.isSpeaking) {
+                this.isListening = false;
+                if (this.updateUIState) {
+                    this.updateUIState();
+                }
+                
+                // Auto-restart after brief delay for non-critical errors
+                setTimeout(() => {
+                    if (!this.isListening && !this.isProcessing && !this.isSpeaking) {
+                        console.log('🔄 Auto-restarting speech recognition after error');
+                        this.startListening();
+                    }
+                }, 1000);
+            }
+        };
         
         // Set up event handlers
         this.setupEventHandlers();
@@ -200,43 +248,6 @@ class VoiceAssistant {
         
         this.recognition.onresult = (event) => {
             this.handleSpeechResult(event);
-        };
-        
-        this.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            
-            // Handle different types of errors appropriately
-            if (event.error === 'already-started' || event.error === 'already-listening') {
-                console.log('Speech recognition already active - not an error');
-                return; // Don't show error for this
-            }
-            
-            // Reset state on serious errors
-            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                this.isListening = false;
-                if (this.onError) {
-                    this.onError(`Speech recognition error: ${event.error} - Please check microphone permissions`);
-                }
-                return;
-            }
-            
-            if (this.onError) {
-                this.onError(`Speech recognition error: ${event.error}`);
-            }
-            
-            // Only restart recognition on recoverable errors
-            if (event.error === 'network' || event.error === 'aborted') {
-                this.isListening = false; // Reset state
-                setTimeout(() => {
-                    if (!this.isListening && !this.isProcessing && !this.processingLock) {
-                        console.log('Attempting to restart after error:', event.error);
-                        this.startListening();
-                    }
-                }, 1500);
-            } else {
-                // For other errors, just reset state
-                this.isListening = false;
-            }
         };
         
         this.recognition.onend = () => {
@@ -298,20 +309,26 @@ class VoiceAssistant {
         //     }
         // }
         
-        // Use enhanced wake word detection if available, otherwise fallback to simple detection
-        // STRICT: Only detect wake word on final results and when system is completely idle
+        // Use enhanced wake word detection with relaxed timing for better responsiveness
         const now = Date.now();
         const timeSinceLastWakeWord = now - this.lastWakeWordTime;
         
+        // Allow wake word detection on both interim and final results for faster response
         if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && !this.isSpeaking &&
-            isFinal && timeSinceLastWakeWord > this.globalCooldown) {
+            timeSinceLastWakeWord > this.globalCooldown) {
             let wakeWordDetected = false;
             
-            console.log(`🔍 Checking wake word in FINAL result: "${transcript}"`);
+            console.log(`🔍 Checking wake word in result: "${transcript}"`);
             
-            // Only check for wake word if we have substantial final text
-            if (transcript.length > 3) {
-                if (this.enhancedWakeWordDetector) {
+                    // Check for wake word with minimal text length for faster detection
+        if (transcript.length > 2) {
+            // INSTANT wake word check for common variations
+            const quickCheck = transcript.toLowerCase().trim();
+            if (quickCheck === 'jarvis' || quickCheck.endsWith('jarvis') || quickCheck.includes('jarvis')) {
+                console.log('🚀 INSTANT wake word detected!');
+                wakeWordDetected = true;
+            }
+                if (!wakeWordDetected && this.enhancedWakeWordDetector) {
                     console.log('Using enhanced wake word detector...');
                     const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
                     wakeWordDetected = wakeWordResult.detected;
@@ -350,6 +367,9 @@ class VoiceAssistant {
                 if (this.onStatusChange) {
                     this.onStatusChange(statusMessage);
                 }
+                
+                // Add visual feedback
+                this.showStatus('🎤 Wake word detected! Listening for your command...', 'success');
                 
                 // Auto-reset wake word after 15 seconds if no command is given and no recent activity
                 setTimeout(() => {
@@ -460,8 +480,10 @@ class VoiceAssistant {
         
         let normalized = transcript.toLowerCase().trim();
         
-        // Simple flight number normalization - avoid complex regex that might duplicate text
-        normalized = normalized.replace(/\bu\s*a\s+(\d+)/gi, 'UA$1');
+        // Enhanced flight number normalization for better recognition
+        normalized = normalized.replace(/\bu\s*a\s+to\s+(\d+)/gi, 'UA$1');  // "UA to 406" -> "UA406"
+        normalized = normalized.replace(/\bu\s*a\s+too\s+(\d+)/gi, 'UA$1');  // "UA too 406" -> "UA406"
+        normalized = normalized.replace(/\bu\s*a\s+(\d+)/gi, 'UA$1');  // "U A 406" -> "UA406"
         normalized = normalized.replace(/\bunited\s+airlines/gi, 'UA');
         
         // Clean up extra spaces
@@ -475,10 +497,10 @@ class VoiceAssistant {
      * Enhanced command processing with better preprocessing
      */
     async processCommand(command) {
-        // Strong debouncing: prevent commands within 5 seconds of each other
+        // Reduced debouncing: prevent commands within 1 second of each other
         const now = Date.now();
-        if (now - this.lastCommandTime < 5000) {
-            console.log('🚫 Command ignored due to debouncing (5 second cooldown)');
+        if (now - this.lastCommandTime < 1000) {
+            console.log('🚫 Command ignored due to debouncing (1 second cooldown)');
             return;
         }
         
@@ -769,12 +791,22 @@ class VoiceAssistant {
         this.synthesis.speak(utterance);
     }
     
-    startListening() {
+    async startListening() {
         if (!this.recognition) {
-            if (this.onError) {
-                this.onError('Speech recognition not available');
-            }
+            this.showError('Speech recognition not available');
             return false;
+        }
+        
+        // Test microphone access on first start
+        if (!this.microphoneTested) {
+            console.log('🔬 Testing microphone for first time...');
+            const microphoneOk = await this.testMicrophone();
+            this.microphoneTested = true;
+            
+            if (!microphoneOk) {
+                console.error('❌ Cannot start speech recognition - microphone test failed');
+                return false;
+            }
         }
         
         // Check if recognition is already active
@@ -784,7 +816,7 @@ class VoiceAssistant {
         }
         
         try {
-            console.log('Starting speech recognition...');
+            console.log('🎤 Starting speech recognition...');
             // Clear all state when starting fresh
             this.isListening = true;
             this.wakeWordDetected = false;
@@ -800,9 +832,7 @@ class VoiceAssistant {
         } catch (error) {
             console.error('Error starting speech recognition:', error);
             this.isListening = false; // Reset state on error
-            if (this.onError) {
-                this.onError(`Error starting speech recognition: ${error.message}`);
-            }
+            this.showError(`Error starting speech recognition: ${error.message}`);
             return false;
         }
     }
@@ -1038,6 +1068,146 @@ class VoiceAssistant {
         } catch (error) {
             console.error('Test query error:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Test microphone access
+     */
+    async testMicrophone() {
+        try {
+            console.log('Testing microphone access...');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('✅ Microphone access granted');
+            
+            // Stop the stream after testing
+            stream.getTracks().forEach(track => track.stop());
+            
+            this.showStatus('Microphone access granted! You can now use voice commands.', 'success');
+            return true;
+        } catch (error) {
+            console.error('❌ Microphone test failed:', error);
+            
+            let errorMessage = 'Microphone access failed: ';
+            switch (error.name) {
+                case 'NotAllowedError':
+                    errorMessage += 'Permission denied. Please allow microphone access.';
+                    break;
+                case 'NotFoundError':
+                    errorMessage += 'No microphone found.';
+                    break;
+                case 'NotReadableError':
+                    errorMessage += 'Microphone is being used by another application.';
+                    break;
+                default:
+                    errorMessage += error.message;
+            }
+            
+            this.showError(errorMessage);
+            return false;
+        }
+    }
+
+    /**
+     * Show status message to user
+     */
+    showStatus(message, type = 'info') {
+        console.log(`[${type.toUpperCase()}] ${message}`);
+        
+        // Create or update status display
+        let statusDiv = document.getElementById('voice-status');
+        if (!statusDiv) {
+            statusDiv = document.createElement('div');
+            statusDiv.id = 'voice-status';
+            statusDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                max-width: 300px;
+                padding: 10px;
+                border-radius: 5px;
+                z-index: 1000;
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+            `;
+            document.body.appendChild(statusDiv);
+        }
+        
+        // Set color based on type
+        const colors = {
+            success: '#d4edda',
+            error: '#f8d7da',
+            warning: '#fff3cd',
+            info: '#d1ecf1'
+        };
+        
+        statusDiv.style.backgroundColor = colors[type] || colors.info;
+        statusDiv.textContent = message;
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (statusDiv.parentNode) {
+                statusDiv.parentNode.removeChild(statusDiv);
+            }
+        }, 5000);
+    }
+
+    /**
+     * Show error message
+     */
+    showError(message) {
+        this.showStatus(message, 'error');
+    }
+
+    /**
+     * Show when system is ready to listen again
+     */
+    showReadyStatus() {
+        const now = Date.now();
+        const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+        
+        if (timeSinceLastWakeWord >= this.globalCooldown && !this.isProcessing && !this.wakeWordDetected) {
+            this.showStatus('🟢 Ready! Say "Jarvis" to activate.', 'info');
+        }
+    }
+
+    /**
+     * Update UI state indicators
+     */
+    updateUIState() {
+        // Update visual indicators based on current state
+        const statusIndicator = document.querySelector('.voice-status-indicator');
+        if (statusIndicator) {
+            if (this.isListening && !this.wakeWordDetected) {
+                statusIndicator.textContent = '🟢 Listening for "Jarvis"...';
+                statusIndicator.className = 'voice-status-indicator listening';
+            } else if (this.wakeWordDetected && !this.isProcessing) {
+                statusIndicator.textContent = '🎤 Say your command...';
+                statusIndicator.className = 'voice-status-indicator wake-detected';
+            } else if (this.isProcessing) {
+                statusIndicator.textContent = '⏳ Processing...';
+                statusIndicator.className = 'voice-status-indicator processing';
+            } else if (this.isSpeaking) {
+                statusIndicator.textContent = '🔊 Speaking...';
+                statusIndicator.className = 'voice-status-indicator speaking';
+            } else {
+                statusIndicator.textContent = '⭕ Ready';
+                statusIndicator.className = 'voice-status-indicator ready';
+            }
+        }
+
+        // Update button states
+        const startBtn = document.getElementById('startVoiceBtn');
+        const stopBtn = document.getElementById('stopVoiceBtn');
+        
+        if (startBtn && stopBtn) {
+            if (this.isListening) {
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+            } else {
+                startBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+            }
         }
     }
 } 
