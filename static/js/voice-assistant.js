@@ -5,6 +5,7 @@ class VoiceAssistant {
         this.isListening = false;
         this.isProcessing = false;
         this.wakeWordDetected = false;
+        this.isSpeaking = false; // Flag to prevent self-interruption
         this.lastTranscript = '';
         this.lastCommandTime = 0; // Add debouncing for commands
         this.commandTimeout = null; // Timer for processing commands
@@ -267,6 +268,12 @@ class VoiceAssistant {
     }
     
     handleSpeechResult(event) {
+        // Completely ignore speech recognition while speaking to prevent self-interruption
+        if (this.isSpeaking) {
+            console.log('🔇 Ignoring speech recognition while assistant is speaking');
+            return;
+        }
+        
         let transcript = '';
         let isFinal = false;
         
@@ -296,7 +303,7 @@ class VoiceAssistant {
         const now = Date.now();
         const timeSinceLastWakeWord = now - this.lastWakeWordTime;
         
-        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
+        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && !this.isSpeaking &&
             isFinal && timeSinceLastWakeWord > this.globalCooldown) {
             let wakeWordDetected = false;
             
@@ -364,8 +371,8 @@ class VoiceAssistant {
             }
         } else if (isFinal && timeSinceLastWakeWord <= this.globalCooldown) {
             console.log(`🚫 Wake word detection in cooldown (${(this.globalCooldown - timeSinceLastWakeWord)/1000}s remaining)`);
-        } else {
-            // Wake word already detected, capture the command
+        } else if (this.wakeWordDetected && !this.isSpeaking) {
+            // Wake word already detected, capture the command - but NOT while speaking
             
             // Deduplicate transcripts to prevent accumulation
             if (this.lastTranscript === transcript && transcript.length > 10) {
@@ -474,8 +481,8 @@ class VoiceAssistant {
             return;
         }
         
-        if (this.isProcessing || this.processingLock) {
-            console.log('🚫 Command ignored - already processing');
+        if (this.isProcessing || this.processingLock || this.isSpeaking) {
+            console.log('🚫 Command ignored - already processing or speaking');
             return;
         }
         
@@ -547,7 +554,10 @@ class VoiceAssistant {
             const endTime = Date.now();
             const latency = (endTime - startTime) / 1000;
             
+            console.log('🎯 Backend response:', response);
+            
             if (response && response.response) {
+                console.log('✅ Speaking response:', response.response.substring(0, 100) + '...');
                 this.speak(response.response);
                 
                 if (this.onResponseReceived) {
@@ -578,7 +588,8 @@ class VoiceAssistant {
                     });
                 }
             } else {
-                throw new Error('Invalid response from server');
+                console.error('❌ No valid response from server:', response);
+                this.speak("I'm sorry, I didn't receive a valid response from the server.");
             }
             
         } catch (error) {
@@ -594,6 +605,7 @@ class VoiceAssistant {
         } finally {
             this.isProcessing = false;
             this.processingLock = false;
+            this.isSpeaking = false; // Always reset speaking flag
             this.lastTranscript = ''; // Clear transcript after processing
             console.log('✅ Command processing completed - all state reset');
             
@@ -650,6 +662,13 @@ class VoiceAssistant {
     }
     
     speak(text) {
+        // Don't speak if no text or empty text
+        if (!text || typeof text !== 'string' || text.trim().length === 0) {
+            console.warn('🚫 No text to speak, skipping synthesis');
+            this.isSpeaking = false;
+            return;
+        }
+        
         // Stop speech recognition completely during synthesis to prevent feedback
         if (this.recognition && this.isListening) {
             console.log('🔇 Stopping speech recognition during synthesis to prevent feedback');
@@ -699,6 +718,8 @@ class VoiceAssistant {
         }
         
         utterance.onstart = () => {
+            // Set a flag to ignore speech recognition during synthesis
+            this.isSpeaking = true;
             if (this.onStatusChange) {
                 const speakingMessage = this.languageManager ? 
                     this.languageManager.translate('speaking') : 'Speaking...';
@@ -707,6 +728,8 @@ class VoiceAssistant {
         };
         
         utterance.onend = () => {
+            // Clear the speaking flag
+            this.isSpeaking = false;
             if (this.onStatusChange) {
                 const wakeWord = this.languageManager ? 
                     this.languageManager.getWakeWords()[0] : 'Jarvis';
@@ -727,9 +750,19 @@ class VoiceAssistant {
         
         utterance.onerror = (event) => {
             console.error('Speech synthesis error:', event.error);
+            // Always clear speaking flag on error
+            this.isSpeaking = false;
             if (this.onError) {
                 this.onError(`Speech synthesis error: ${event.error}`);
             }
+            
+            // Restart speech recognition after error
+            setTimeout(() => {
+                if (!this.isListening && !this.isProcessing && !this.processingLock) {
+                    console.log('🔄 Restarting speech recognition after synthesis error');
+                    this.startListening();
+                }
+            }, 500);
         };
         
         this.synthesis.speak(utterance);
