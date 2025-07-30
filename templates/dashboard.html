@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS - Performance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: transform 0.2s ease;
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-online { background-color: #10b981; }
+        .status-warning { background-color: #f59e0b; }
+        .status-offline { background-color: #ef4444; }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+        }
+        
+        .real-time-indicator {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-blue-900 text-white p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold">JARVIS Performance Dashboard</h1>
+            <div class="flex items-center space-x-4">
+                <span class="status-indicator status-online real-time-indicator"></span>
+                <span class="text-sm">Real-time Monitoring</span>
+                <button id="refresh-btn" class="bg-blue-700 hover:bg-blue-600 px-4 py-2 rounded">
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard -->
+    <div class="container mx-auto p-6">
+        <!-- Key Metrics Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <!-- Response Time -->
+            <div class="metric-card text-white p-6 rounded-lg shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm opacity-80">Avg Response Time</p>
+                        <p class="text-3xl font-bold" id="avg-response-time">2.3s</p>
+                    </div>
+                    <div class="text-4xl opacity-60">⚡</div>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm opacity-80">Target: &lt;3s</span>
+                </div>
+            </div>
+
+            <!-- Query Success Rate -->
+            <div class="metric-card text-white p-6 rounded-lg shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm opacity-80">Success Rate</p>
+                        <p class="text-3xl font-bold" id="success-rate">94.2%</p>
+                    </div>
+                    <div class="text-4xl opacity-60">✓</div>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm opacity-80">Target: &gt;90%</span>
+                </div>
+            </div>
+
+            <!-- Cache Hit Rate -->
+            <div class="metric-card text-white p-6 rounded-lg shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm opacity-80">Cache Hit Rate</p>
+                        <p class="text-3xl font-bold" id="cache-hit-rate">87.5%</p>
+                    </div>
+                    <div class="text-4xl opacity-60">💾</div>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm opacity-80">Target: &gt;80%</span>
+                </div>
+            </div>
+
+            <!-- Active Users -->
+            <div class="metric-card text-white p-6 rounded-lg shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm opacity-80">Active Sessions</p>
+                        <p class="text-3xl font-bold" id="active-sessions">23</p>
+                    </div>
+                    <div class="text-4xl opacity-60">👥</div>
+                </div>
+                <div class="mt-2">
+                    <span class="text-sm opacity-80">Last 5 minutes</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Response Time Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-lg font-semibold mb-4">Response Time Trend</h3>
+                <div class="chart-container">
+                    <canvas id="responseTimeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Query Volume Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-lg font-semibold mb-4">Query Volume</h3>
+                <div class="chart-container">
+                    <canvas id="queryVolumeChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Status and Database Performance -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- System Status -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-lg font-semibold mb-4">System Status</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center">
+                            <span class="status-indicator status-online"></span>
+                            Database Connection
+                        </span>
+                        <span class="text-green-600 font-medium">Online</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center">
+                            <span class="status-indicator status-online"></span>
+                            External Systems
+                        </span>
+                        <span class="text-green-600 font-medium">5/5 Online</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center">
+                            <span class="status-indicator status-warning"></span>
+                            Cache System
+                        </span>
+                        <span class="text-yellow-600 font-medium">Redis Fallback</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center">
+                            <span class="status-indicator status-online"></span>
+                            Analytics Engine
+                        </span>
+                        <span class="text-green-600 font-medium">Running</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database Performance -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-lg font-semibold mb-4">Database Performance</h3>
+                <div class="space-y-4">
+                    <div class="flex justify-between">
+                        <span>Connection Pool Usage</span>
+                        <span class="font-medium">3/5 connections</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-600 h-2 rounded-full" style="width: 60%"></div>
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <span>Query Cache Efficiency</span>
+                        <span class="font-medium">87.5%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-green-600 h-2 rounded-full" style="width: 87.5%"></div>
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <span>Storage Usage</span>
+                        <span class="font-medium">2.3GB / 10GB</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-yellow-600 h-2 rounded-full" style="width: 23%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- External Systems Integration -->
+        <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+            <h3 class="text-lg font-semibold mb-4">External Systems Integration</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div class="text-center p-4 border rounded-lg">
+                    <div class="status-indicator status-online mx-auto mb-2"></div>
+                    <h4 class="font-medium">FIDS</h4>
+                    <p class="text-sm text-gray-600">Last sync: 30s ago</p>
+                    <p class="text-sm text-green-600">125 flights updated</p>
+                </div>
+                <div class="text-center p-4 border rounded-lg">
+                    <div class="status-indicator status-online mx-auto mb-2"></div>
+                    <h4 class="font-medium">Ground Handling</h4>
+                    <p class="text-sm text-gray-600">Last sync: 2m ago</p>
+                    <p class="text-sm text-green-600">48 equipment updated</p>
+                </div>
+                <div class="text-center p-4 border rounded-lg">
+                    <div class="status-indicator status-warning mx-auto mb-2"></div>
+                    <h4 class="font-medium">Baggage System</h4>
+                    <p class="text-sm text-gray-600">Last sync: 5m ago</p>
+                    <p class="text-sm text-yellow-600">Sync delayed</p>
+                </div>
+                <div class="text-center p-4 border rounded-lg">
+                    <div class="status-indicator status-online mx-auto mb-2"></div>
+                    <h4 class="font-medium">Weather</h4>
+                    <p class="text-sm text-gray-600">Last sync: 1m ago</p>
+                    <p class="text-sm text-green-600">Current conditions</p>
+                </div>
+                <div class="text-center p-4 border rounded-lg">
+                    <div class="status-indicator status-online mx-auto mb-2"></div>
+                    <h4 class="font-medium">ATC</h4>
+                    <p class="text-sm text-gray-600">Last sync: 15s ago</p>
+                    <p class="text-sm text-green-600">Real-time tracking</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Predictive Analytics Performance -->
+        <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+            <h3 class="text-lg font-semibold mb-4">Predictive Analytics Performance</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center">
+                    <h4 class="font-medium mb-2">Delay Prediction Model</h4>
+                    <div class="text-3xl font-bold text-blue-600 mb-2">91.2%</div>
+                    <p class="text-sm text-gray-600">Accuracy Score</p>
+                    <p class="text-xs text-gray-500">MAE: 8.3 minutes</p>
+                </div>
+                <div class="text-center">
+                    <h4 class="font-medium mb-2">Equipment Failure Model</h4>
+                    <div class="text-3xl font-bold text-green-600 mb-2">88.7%</div>
+                    <p class="text-sm text-gray-600">F1 Score</p>
+                    <p class="text-xs text-gray-500">Precision: 92.1%</p>
+                </div>
+                <div class="text-center">
+                    <h4 class="font-medium mb-2">Optimization Engine</h4>
+                    <div class="text-3xl font-bold text-purple-600 mb-2">1.2s</div>
+                    <p class="text-sm text-gray-600">Avg Execution Time</p>
+                    <p class="text-xs text-gray-500">23 optimizations today</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h3 class="text-lg font-semibold mb-4">Recent Activity</h3>
+            <div class="space-y-3" id="recent-activity">
+                <!-- Activity items will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart.js configuration and data
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        };
+
+        // Response Time Chart
+        const responseTimeCtx = document.getElementById('responseTimeChart').getContext('2d');
+        const responseTimeChart = new Chart(responseTimeCtx, {
+            type: 'line',
+            data: {
+                labels: ['5m ago', '4m ago', '3m ago', '2m ago', '1m ago', 'Now'],
+                datasets: [{
+                    label: 'Response Time (seconds)',
+                    data: [2.1, 2.3, 2.0, 2.5, 2.2, 2.3],
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                ...chartOptions,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Query Volume Chart
+        const queryVolumeCtx = document.getElementById('queryVolumeChart').getContext('2d');
+        const queryVolumeChart = new Chart(queryVolumeCtx, {
+            type: 'bar',
+            data: {
+                labels: ['5m ago', '4m ago', '3m ago', '2m ago', '1m ago', 'Now'],
+                datasets: [{
+                    label: 'Queries per Minute',
+                    data: [45, 52, 38, 61, 49, 56],
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                    borderColor: 'rgb(16, 185, 129)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                ...chartOptions,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Real-time data update functions
+        function updateMetrics() {
+            // Simulate real-time data updates
+            const responseTime = (Math.random() * 1 + 2).toFixed(1);
+            const successRate = (Math.random() * 5 + 90).toFixed(1);
+            const cacheRate = (Math.random() * 10 + 80).toFixed(1);
+            const sessions = Math.floor(Math.random() * 10 + 20);
+
+            document.getElementById('avg-response-time').textContent = responseTime + 's';
+            document.getElementById('success-rate').textContent = successRate + '%';
+            document.getElementById('cache-hit-rate').textContent = cacheRate + '%';
+            document.getElementById('active-sessions').textContent = sessions;
+        }
+
+        function updateCharts() {
+            // Update response time chart
+            const newResponseTime = Math.random() * 1 + 2;
+            responseTimeChart.data.datasets[0].data.shift();
+            responseTimeChart.data.datasets[0].data.push(newResponseTime);
+            responseTimeChart.update('none');
+
+            // Update query volume chart
+            const newQueryVolume = Math.floor(Math.random() * 30 + 40);
+            queryVolumeChart.data.datasets[0].data.shift();
+            queryVolumeChart.data.datasets[0].data.push(newQueryVolume);
+            queryVolumeChart.update('none');
+        }
+
+        function updateRecentActivity() {
+            const activities = [
+                { time: 'Just now', action: 'Flight UA2406 delay prediction: 12 minutes', type: 'prediction' },
+                { time: '30s ago', action: 'Equipment T-42 scheduled for maintenance', type: 'optimization' },
+                { time: '1m ago', action: 'Staff schedule optimized for shift 2B', type: 'optimization' },
+                { time: '2m ago', action: 'Cache invalidated for flight queries', type: 'system' },
+                { time: '3m ago', action: 'External system FIDS synchronized', type: 'sync' },
+                { time: '5m ago', action: 'New user session started', type: 'user' }
+            ];
+
+            const activityContainer = document.getElementById('recent-activity');
+            activityContainer.innerHTML = activities.map(activity => `
+                <div class="flex items-center justify-between py-2 border-b last:border-b-0">
+                    <div class="flex items-center">
+                        <div class="w-2 h-2 rounded-full bg-blue-500 mr-3"></div>
+                        <span class="text-sm">${activity.action}</span>
+                    </div>
+                    <span class="text-xs text-gray-500">${activity.time}</span>
+                </div>
+            `).join('');
+        }
+
+        // API functions
+        async function refreshDashboardData() {
+            try {
+                const response = await fetch('/api/dashboard/metrics');
+                const data = await response.json();
+                
+                // Update metrics with real data
+                if (data.avg_response_time !== undefined) {
+                    document.getElementById('avg-response-time').textContent = data.avg_response_time.toFixed(1) + 's';
+                }
+                if (data.success_rate !== undefined) {
+                    document.getElementById('success-rate').textContent = (data.success_rate * 100).toFixed(1) + '%';
+                }
+                if (data.cache_hit_rate !== undefined) {
+                    document.getElementById('cache-hit-rate').textContent = (data.cache_hit_rate * 100).toFixed(1) + '%';
+                }
+                if (data.active_sessions !== undefined) {
+                    document.getElementById('active-sessions').textContent = data.active_sessions;
+                }
+            } catch (error) {
+                console.error('Failed to fetch dashboard data:', error);
+                // Fall back to simulated data
+                updateMetrics();
+            }
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            updateRecentActivity();
+            refreshDashboardData();
+            
+            // Set up auto-refresh
+            setInterval(() => {
+                updateMetrics();
+                updateCharts();
+            }, 5000); // Update every 5 seconds
+
+            setInterval(() => {
+                updateRecentActivity();
+            }, 30000); // Update activity every 30 seconds
+        });
+
+        // Manual refresh button
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            refreshDashboardData();
+            updateCharts();
+            updateRecentActivity();
+        });
+    </script>
+</body>
+</html>

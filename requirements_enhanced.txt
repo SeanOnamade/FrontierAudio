@@ -1,0 +1,33 @@
+# Enhanced Airport Operations Voice Assistant Requirements
+
+# Core Flask and API dependencies
+Flask==2.3.3
+Flask-CORS==4.0.0
+python-dotenv==1.0.0
+openai==1.3.7
+
+# Enhanced Database Support
+psycopg2-binary==2.9.7  # PostgreSQL support
+mysql-connector-python==8.1.0  # MySQL support
+redis==5.0.1  # Redis caching support
+
+# Machine Learning and Analytics
+scikit-learn==1.3.0
+numpy==1.24.3
+pandas==2.0.3
+joblib==1.3.2
+
+# Web scraping and API integration
+requests==2.31.0
+schedule==1.2.0
+
+# Data visualization (for dashboard)
+matplotlib==3.7.2  # Optional for chart generation
+seaborn==0.12.2  # Optional for advanced plotting
+
+# XML parsing
+lxml==4.9.3
+
+# Development and testing
+pytest==7.4.0
+pytest-flask==1.2.0

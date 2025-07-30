@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis - Airport Operations Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/enhanced-style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/personalization.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/performance-dashboard.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛫 JARVIS</h1>
+            <p data-translate="airport_operations_assistant">Airport Operations Voice Assistant</p>
+            <div class="language-selector-container" id="language-selector-container">
+                <!-- Language selector will be injected here -->
+            </div>
+        </header>
+
+        <main>
+            <div class="status-panel">
+                <div class="status-item">
+                    <span class="status-label" data-translate="status">Status:</span>
+                    <span id="status" class="status-value">Initializing...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label" data-translate="listening">Listening:</span>
+                    <span id="listening-status" class="status-value">No</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label" data-translate="response_time">Last Response Time:</span>
+                    <span id="response-time" class="status-value">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Language:</span>
+                    <span id="current-language" class="status-value">English</span>
+                </div>
+                <div class="status-item" id="user-status" style="display: none;">
+                    <span class="status-label">User:</span>
+                    <span id="current-user" class="status-value">-</span>
+                </div>
+            </div>
+
+            <div class="voice-interface">
+                <div id="visual-feedback" class="visual-feedback">
+                    <div class="waveform">
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <button id="start-btn" class="btn primary" data-translate="start_voice_assistant">Start Voice Assistant</button>
+                    <button id="stop-btn" class="btn secondary" disabled data-translate="stop_voice_assistant">Stop Assistant</button>
+                    <button id="test-btn" class="btn secondary" data-translate="test_mode">Test Mode</button>
+                    <button id="run-tests-btn" class="btn secondary">Run Tests</button>
+                </div>
+
+                <div class="wake-word-info">
+                    <p>💡 <strong>Always Listening:</strong> Say <strong><span data-wake-word>Jarvis</span></strong> followed by your question</p>
+                    <p class="example">Example: "<span data-wake-word>Jarvis</span>, <span data-translate="test_query_1">what is the status of flight UA2406?</span>"</p>
+                    <p><small>🎤 The assistant starts automatically and listens continuously for the wake word</small></p>
+                </div>
+            </div>
+
+            <!-- Enhanced Settings Panel -->
+            <div class="settings-panel" id="settings-panel">
+                <h3 data-translate="settings">Settings</h3>
+                
+                <div class="setting-group">
+                    <h4 data-translate="voice_settings">Voice Settings</h4>
+                    <div class="setting-item">
+                        <label data-translate="wake_word_sensitivity">Wake Word Sensitivity:</label>
+                        <select id="sensitivity-select">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="biometrics-toggle">
+                            <span data-translate="enable_biometrics">Enable Voice Biometrics</span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="stress-detection-toggle" checked>
+                            <span data-translate="enable_stress_detection">Enable Stress Detection</span>
+                        </label>
+                    </div>
+                    <div class="setting-item">
+                        <label>
+                            <input type="checkbox" id="auto-language-toggle" checked>
+                            <span data-translate="auto_language_detection">Auto Language Detection</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-group">
+                    <h4 data-translate="custom_wake_words">Custom Wake Words</h4>
+                    <div class="setting-item">
+                        <input type="text" id="custom-wake-word-input" placeholder="Add custom wake word">
+                        <button id="add-wake-word-btn" class="btn small">Add</button>
+                    </div>
+                    <div id="custom-wake-words-list" class="custom-wake-words"></div>
+                </div>
+            </div>
+
+            <div class="conversation-log">
+                <h3 data-translate="conversation_log">Conversation History</h3>
+                <div class="conversation-controls">
+                    <button id="clear-log-btn" class="btn small">Clear</button>
+                    <button id="export-log-btn" class="btn small">Export</button>
+                </div>
+                <div id="log-container">
+                    <div class="log-entry system">
+                        <span class="timestamp">System</span>
+                        <span class="message">Voice assistant ready. Continuously listening for "<span data-wake-word>Jarvis</span>" wake word.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="test-queries">
+                <h3>Quick Test Queries</h3>
+                <div class="language-tabs">
+                    <button class="tab-btn active" data-lang="en">English</button>
+                    <button class="tab-btn" data-lang="es">Español</button>
+                    <button class="tab-btn" data-lang="fr">Français</button>
+                </div>
+                <div class="test-buttons" id="test-buttons-container">
+                    <!-- Test buttons will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Performance Monitoring -->
+            <div class="performance-panel" id="performance-panel">
+                <h3>Performance Metrics</h3>
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <span class="metric-label">Wake Word Accuracy:</span>
+                        <span id="wake-word-accuracy" class="metric-value">-</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Avg Response Time:</span>
+                        <span id="avg-response-time" class="metric-value">-</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Language Detection Rate:</span>
+                        <span id="language-detection-rate" class="metric-value">-</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Success Rate:</span>
+                        <span id="success-rate" class="metric-value">-</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div class="footer-info">
+                <p>Built for Frontier AI Challenge - Airport Operations Assistant</p>
+                <p>Target: &lt;3s latency, 90%+ accuracy, Voice I/O</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Enhanced UI & UX Files -->
+    <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/user-personalization.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/performance-dashboard.js') }}"></script>
+    
+    <!-- Core JavaScript Files -->
+    <script src="{{ url_for('static', filename='js/language-manager.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/enhanced-wake-word.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/voice-biometrics.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/test-suite.js') }}"></script>
+    
+    <!-- New Conversation & Context Enhancement Files -->
+    <script src="{{ url_for('static', filename='js/conversation-memory.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/smart-query-processor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/proactive-assistant.js') }}"></script>
+    
+    <script src="{{ url_for('static', filename='js/voice-assistant.js') }}?v={{ timestamp }}"></script>
+    <script src="{{ url_for('static', filename='js/wake-word.js') }}?v={{ timestamp }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ timestamp }}"></script>
+</body>
+</html> 
