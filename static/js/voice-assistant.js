@@ -9,6 +9,8 @@ class VoiceAssistant {
         this.lastCommandTime = 0; // Add debouncing for commands
         this.commandTimeout = null; // Timer for processing commands
         this.processingLock = false; // Prevent multiple processing attempts
+        this.lastWakeWordTime = 0; // Timestamp of last wake word detection
+        this.globalCooldown = 8000; // 8 second global cooldown between wake words
         
         // Enhanced features
         this.languageManager = null;
@@ -254,7 +256,7 @@ class VoiceAssistant {
                     } else {
                         console.log('Skipping restart - system busy or already listening');
                     }
-                }, 750); // Longer delay to ensure complete shutdown
+                }, 1500); // Much longer delay to prevent audio overlap
             } else {
                 console.log('Not restarting recognition - not listening or processing');
                 if (this.onListeningChange) {
@@ -293,32 +295,47 @@ class VoiceAssistant {
         // }
         
         // Use enhanced wake word detection if available, otherwise fallback to simple detection
-        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock) {
+        // STRICT: Only detect wake word on final results and when system is completely idle
+        const now = Date.now();
+        const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+        
+        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
+            isFinal && timeSinceLastWakeWord > this.globalCooldown) {
             let wakeWordDetected = false;
             
-            console.log(`Checking wake word in: "${transcript}" (final: ${isFinal})`);
+            console.log(`🔍 Checking wake word in FINAL result: "${transcript}"`);
             
-            // Only check for wake word if we have substantial text and it's final or a clear interim result
-            if ((isFinal && transcript.length > 3) || (!isFinal && transcript.length > 6)) {
+            // Only check for wake word if we have substantial final text
+            if (transcript.length > 3) {
                 if (this.enhancedWakeWordDetector) {
                     console.log('Using enhanced wake word detector...');
                     const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
                     wakeWordDetected = wakeWordResult.detected;
                     console.log('Enhanced wake word result:', wakeWordResult);
                     if (wakeWordDetected) {
-                        console.log('Enhanced wake word detected!', wakeWordResult);
+                        console.log('✅ Enhanced wake word detected!', wakeWordResult);
                     }
                 } else {
                     console.log('Using simple wake word detection...');
                     // Fallback to simple wake word detection
                     wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
+                    if (wakeWordDetected) {
+                        console.log('✅ Simple wake word detected!');
+                    }
                 }
             }
             
             if (wakeWordDetected) {
-                console.log('Wake word confirmed! Setting wakeWordDetected = true');
+                console.log('🎯 Wake word confirmed! Setting wakeWordDetected = true');
                 this.wakeWordDetected = true;
                 this.lastTranscript = '';
+                this.lastWakeWordTime = now; // Record wake word detection time
+                
+                // Clear any existing timeouts
+                if (this.commandTimeout) {
+                    clearTimeout(this.commandTimeout);
+                    this.commandTimeout = null;
+                }
                 
                 const wakeWord = this.languageManager ? 
                     this.languageManager.getWakeWords()[0] : 'Jarvis';
@@ -348,8 +365,28 @@ class VoiceAssistant {
                 
                 return;
             }
+        } else if (isFinal && timeSinceLastWakeWord <= this.globalCooldown) {
+            console.log(`🚫 Wake word detection in cooldown (${(this.globalCooldown - timeSinceLastWakeWord)/1000}s remaining)`);
         } else {
             // Wake word already detected, capture the command
+            
+            // Deduplicate transcripts to prevent accumulation
+            if (this.lastTranscript === transcript && transcript.length > 10) {
+                console.log(`🔄 Duplicate transcript ignored: "${transcript}"`);
+                return;
+            }
+            
+            // Detect repeated content in transcript (sign of multiple detections)
+            const words = transcript.toLowerCase().split(' ');
+            if (words.length > 8) {
+                const uniqueWords = new Set(words);
+                const repetitionRatio = words.length / uniqueWords.size;
+                if (repetitionRatio > 2) {
+                    console.log(`🚫 Repeated content detected (ratio: ${repetitionRatio.toFixed(1)}), ignoring transcript`);
+                    return;
+                }
+            }
+            
             this.lastTranscript = transcript;
             
             console.log(`🎤 Command capture - Transcript: "${transcript}", isFinal: ${isFinal}, Length: ${transcript.length}`);
@@ -576,7 +613,8 @@ class VoiceAssistant {
         } finally {
             this.isProcessing = false;
             this.processingLock = false;
-            console.log('✅ Command processing completed - lock released');
+            this.lastTranscript = ''; // Clear transcript after processing
+            console.log('✅ Command processing completed - all state reset');
         }
     }
     
