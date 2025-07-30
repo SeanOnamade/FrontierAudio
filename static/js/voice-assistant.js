@@ -88,8 +88,8 @@ class VoiceAssistant {
         // Initialize smart query processor
         this.smartQueryProcessor = new SmartQueryProcessor();
         
-        // Initialize proactive assistant
-        this.proactiveAssistant = new ProactiveAssistant();
+        // Initialize proactive assistant with reference to this voice assistant
+        this.proactiveAssistant = new ProactiveAssistant('/api', this);
         this.proactiveAssistant.onNotification = (alert) => {
             console.log('Proactive notification:', alert);
         };
@@ -270,7 +270,7 @@ class VoiceAssistant {
     handleSpeechResult(event) {
         // Completely ignore speech recognition while speaking to prevent self-interruption
         if (this.isSpeaking) {
-            console.log('🔇 Ignoring speech recognition while assistant is speaking');
+            // Reduced logging to minimize console noise
             return;
         }
         
@@ -351,10 +351,11 @@ class VoiceAssistant {
                     this.onStatusChange(statusMessage);
                 }
                 
-                // Auto-reset wake word after 10 seconds if no command is given
+                // Auto-reset wake word after 15 seconds if no command is given and no recent activity
                 setTimeout(() => {
-                    if (this.wakeWordDetected && !this.isProcessing && !this.processingLock) {
-                        console.log('🔄 Auto-resetting wake word detection after timeout');
+                    if (this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
+                        (!this.lastTranscript || this.lastTranscript.length < 5)) {
+                        console.log('🔄 Auto-resetting wake word detection after timeout (no meaningful input)');
                         this.wakeWordDetected = false;
                         this.lastTranscript = '';
                         if (this.commandTimeout) {
@@ -365,7 +366,7 @@ class VoiceAssistant {
                             this.onStatusChange('Ready - Say "Jarvis" to begin');
                         }
                     }
-                }, 10000);
+                }, 15000); // Increased to 15 seconds
                 
                 return;
             }
@@ -438,7 +439,7 @@ class VoiceAssistant {
                     } else {
                         console.log('🚫 Timeout processing skipped - already processed or invalid state');
                     }
-                }, 3000); // Process after 3 seconds of silence (longer)
+                }, 2000); // Process after 2 seconds of silence
             }
         }
     }
