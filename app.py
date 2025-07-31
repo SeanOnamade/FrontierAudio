@@ -407,7 +407,7 @@ assistant = AirportVoiceAssistant()
 def index():
     """Serve the main web interface"""
     import time
-    return render_template('index.html', timestamp=int(time.time()))
+    return render_template('index.html', timestamp=int(time.time() * 1000))
 
 @app.route('/api/query', methods=['POST'])
 def process_voice_query():
