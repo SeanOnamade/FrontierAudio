@@ -458,7 +458,7 @@ class ProactiveAssistant {
     deliverCriticalNotification(alert) {
         // Critical notifications: sound + visual + voice
         this.playAlertSound('critical');
-        this.showVisualAlert(alert, 'critical');
+        // DISABLED: this.showVisualAlert(alert, 'critical');
         this.speakNotification(alert);
         
         if (this.onCriticalAlert) {
@@ -469,7 +469,7 @@ class ProactiveAssistant {
     deliverHighPriorityNotification(alert) {
         // High priority: sound + visual
         this.playAlertSound('high');
-        this.showVisualAlert(alert, 'high');
+        // DISABLED: this.showVisualAlert(alert, 'high');
         
         if (this.onAlert) {
             this.onAlert(alert);
@@ -478,7 +478,7 @@ class ProactiveAssistant {
     
     deliverRegularNotification(alert) {
         // Regular: visual only
-        this.showVisualAlert(alert, 'normal');
+        // DISABLED: this.showVisualAlert(alert, 'normal');
         
         if (this.onNotification) {
             this.onNotification(alert);
@@ -517,6 +517,9 @@ class ProactiveAssistant {
     }
     
     showVisualAlert(alert, priority) {
+        // DISABLED: Premium cards UI popup removed per user request
+        return;
+        
         const alertElement = document.createElement('div');
         alertElement.className = `proactive-alert priority-${priority}`;
         alertElement.innerHTML = `

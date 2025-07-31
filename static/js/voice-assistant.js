@@ -371,6 +371,12 @@ class VoiceAssistant {
                 // Add visual feedback
                 this.showStatus('🎤 Wake word detected! Listening for your command...', 'success');
                 
+                // Update modern UI if available
+                if (window.modernJarvis) {
+                    window.modernJarvis.updateBubbleState('active');
+                    window.modernJarvis.updateStatus('Wake word detected!', 'Listening for your command...');
+                }
+                
                 // Auto-reset wake word after 15 seconds if no command is given and no recent activity
                 setTimeout(() => {
                     if (this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
@@ -681,6 +687,12 @@ class VoiceAssistant {
             this.lastTranscript = ''; // Clear transcript after processing
             console.log('✅ Command processing completed - all state reset');
             
+            // Update modern UI if available
+            if (window.modernJarvis) {
+                window.modernJarvis.updateBubbleState('idle');
+                window.modernJarvis.updateStatus('Processing complete', 'Ready for next command');
+            }
+            
             // Restart speech recognition after processing is complete
             setTimeout(() => {
                 if (!this.isListening && !this.isProcessing && !this.processingLock) {
@@ -799,6 +811,12 @@ class VoiceAssistant {
                 const speakingMessage = this.languageManager ? 
                     this.languageManager.translate('speaking') : 'Speaking...';
                 this.onStatusChange(speakingMessage);
+            }
+            
+            // Update modern UI if available
+            if (window.modernJarvis) {
+                window.modernJarvis.updateBubbleState('speaking');
+                window.modernJarvis.updateStatus('Speaking...', 'Listening to response');
             }
         };
         
