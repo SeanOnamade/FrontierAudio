@@ -12,7 +12,8 @@ class ThemeManager {
     }
 
     init() {
-        this.createThemeControls();
+        // Theme controls disabled per user request
+        // this.createThemeControls();
         this.bindEvents();
         this.applyTheme();
         this.applyPreferences();

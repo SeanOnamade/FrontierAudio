@@ -325,60 +325,13 @@
                 console.log('✅ Bubble FINAL NUKED');
             }
             
-            // STEP 5: TARGET THEME CONTROLS (PROFESSIONAL STYLE) 
-            console.log('🎯 TARGETING THEME CONTROLS');
-            
-            const themeControls = document.querySelector('.theme-controls');
-            if (themeControls) {
-                themeControls.style.cssText = `
-                    position: fixed !important;
-                    bottom: 20px !important;
-                    right: 20px !important;
-                    z-index: 999900 !important;
-                    display: flex !important;
-                    gap: 8px !important;
-                    padding: 8px !important;
-                    border-radius: 12px !important;
-                    backdrop-filter: blur(15px) !important;
-                    border: 1px solid rgba(148, 163, 184, 0.3) !important;
-                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
-                    background: linear-gradient(145deg, rgba(240, 244, 248, 0.95) 0%, rgba(226, 232, 240, 0.9) 100%) !important;
-                `;
-                
-                const themeButtons = themeControls.querySelectorAll('.theme-toggle');
-                themeButtons.forEach(button => {
-                    button.style.cssText = `
-                        width: 48px !important;
-                        height: 48px !important;
-                        border: none !important;
-                        border-radius: 12px !important;
-                        cursor: pointer !important;
-                        font-size: 20px !important;
-                        transition: all 0.2s ease !important;
-                        backdrop-filter: blur(15px) !important;
-                        display: flex !important;
-                        align-items: center !important;
-                        justify-content: center !important;
-                    `;
-                    
-                    button.addEventListener('mouseenter', () => {
-                        button.style.transform = 'scale(1.1)';
-                        button.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
-                    });
-                    
-                    button.addEventListener('mouseleave', () => {
-                        button.style.transform = 'scale(1)';
-                        button.style.boxShadow = 'none';
-                    });
-                });
-                
-                console.log('✅ THEME CONTROLS STYLED');
-            }
+            // Theme controls removed per user request
+            console.log('✅ THEME CONTROLS DISABLED');
             
             // Performance Dashboard removed per user request
             console.log('✅ PERFORMANCE DASHBOARD DISABLED');
             
-            // STEP 6: Transform sections
+            // STEP 5: Transform sections
             const settingsSection = document.querySelector('.settings-section');
             if (settingsSection) {
                 settingsSection.style.cssText = `
