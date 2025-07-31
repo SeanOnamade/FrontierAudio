@@ -13,7 +13,7 @@ class Config:
     # OpenAI Configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
-    OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '200'))
+    OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '300'))
     OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.1'))
     
     # Database Configuration

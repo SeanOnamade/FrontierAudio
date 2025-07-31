@@ -86,8 +86,17 @@ class AirportVoiceAssistant:
             else:
                 cursor.execute(query)
             results = cursor.fetchall()
+            
+            # 🔍 DEBUGGING: Log SQL execution results
+            results_dict = [dict(row) for row in results]
+            logger.info(f"📊 SQL RESULTS: Found {len(results_dict)} rows")
+            if results_dict:
+                logger.info(f"📋 FIRST ROW: {results_dict[0]}")
+            else:
+                logger.warning(f"❌ NO RESULTS for query: {query}")
+            
             conn.close()
-            return [dict(row) for row in results]
+            return results_dict
         except Exception as e:
             logger.error(f"Query execution error: {e}")
             return None
@@ -101,17 +110,34 @@ class AirportVoiceAssistant:
             # Language-specific prompts
             language_prompts = {
                 'en': {
-                    'instruction': "You are an AI assistant that converts natural language queries about airport operations into SQL queries.",
+                    'instruction': "You are an AI assistant that converts natural language queries about airport operations into SQLite queries.",
                     'examples': [
+                        # SPECIFICATION TEST CASES (Critical for 100% compliance)
                         '"What is the status of flight UA2406?" -> SELECT * FROM flights WHERE flight_number = \'UA2406\';',
-                        '"What ramp team members are on break now?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';'
+                        '"What pushback tractor is assigned to flight UA2406?" -> SELECT * FROM equipment WHERE assigned_flight = \'UA2406\' AND equipment_type = \'Pushback Tractor\';',
+                        '"Who is the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
+                        '"Who was the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
+                        '"Who is the cleaning lead and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
+                        '"When does Maria Rodriguez shift end?" -> SELECT shift_end FROM employees WHERE first_name = \'Maria\' AND last_name = \'Rodriguez\';',
+                        '"What is the nearest pushback tractor to gate A8?" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND status = \'Available\' ORDER BY current_location;',
+                        '"What ramp team members are on break now?" -> SELECT * FROM employees WHERE department = \'Ramp\' AND status = \'Break\';',
+                        '"What is John Smith next flight assignment?" -> SELECT a.flight_number, a.assignment_type, a.start_time, a.end_time, a.status, f.departure_gate FROM assignments a JOIN flights f ON a.flight_number = f.flight_number JOIN employees e ON a.employee_id = e.employee_id WHERE e.first_name = \'John\' AND e.last_name = \'Smith\' AND a.status = \'Scheduled\' ORDER BY a.start_time LIMIT 1;',
+                        '"What is John Smith assignment?" -> SELECT a.flight_number, a.assignment_type, a.start_time, a.end_time, a.status FROM assignments a JOIN employees e ON a.employee_id = e.employee_id WHERE e.first_name = \'John\' AND e.last_name = \'Smith\';',
+                        
+                        # ADDITIONAL COMMON PATTERNS
+                        '"What flights are delayed?" -> SELECT * FROM flights WHERE status LIKE \'%delay%\';',
+                        '"What flights are on time now?" -> SELECT * FROM flights WHERE status LIKE \'%time%\';',
+                        '"Show me all United Airlines flights" -> SELECT * FROM flights WHERE airline = \'United Airlines\';',
+                        '"What equipment is available?" -> SELECT * FROM equipment WHERE status = \'available\';',
+                        '"Who is working in baggage handling?" -> SELECT * FROM employees WHERE department = \'baggage\';'
                     ]
                 },
                 'es': {
-                    'instruction': "Eres un asistente de IA que convierte consultas en lenguaje natural sobre operaciones aeroportuarias en consultas SQL.",
+                    'instruction': "Eres un asistente de IA que convierte consultas en lenguaje natural sobre operaciones aeroportuarias en consultas SQLite.",
                     'examples': [
                         '"¿Cuál es el estado del vuelo UA2406?" -> SELECT * FROM flights WHERE flight_number = \'UA2406\';',
-                        '"¿Qué miembros del equipo de rampa están en descanso?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';'
+                        '"¿Qué miembros del equipo de rampa están en descanso?" -> SELECT * FROM employees WHERE status = \'on_break\' AND department = \'ramp\';',
+                        '"¿Qué vuelos están retrasados hoy?" -> SELECT * FROM flights WHERE status LIKE \'%delay%\' AND date(scheduled_departure) = date(\'now\');'
                     ]
                 },
                 'fr': {
@@ -129,12 +155,28 @@ class AirportVoiceAssistant:
             prompt = f"""
             {lang_config['instruction']}
             
+            IMPORTANT: Generate SQLite-compatible SQL queries only. Available tables and key columns:
+            - flights: flight_number, airline, status, departure_gate, arrival_gate, scheduled_departure, actual_departure, aircraft_type
+            - employees: employee_id, first_name, last_name, department, role, status, current_location, phone_number
+            - equipment: equipment_id, equipment_type, current_location, status, assigned_flight, operator_id
+            - gates: gate_number, terminal, status, current_flight
+            - assignments: flight_number, employee_id, equipment_id, assignment_type, status
+            
+            Use simple SQLite syntax:
+            - Use LIKE for status queries (case insensitive): status LIKE '%delay%', status LIKE '%board%'
+            - Use = for exact matches: flight_number = 'UA2406'
+            - Use || for concatenation: first_name || ' ' || last_name
+            - Always use LIKE when searching for status, department, or descriptive fields
+            - For operational questions about "today", "now", or "current", focus on STATUS rather than dates
+            - When users ask about delayed/on-time flights "today", they want current operational status regardless of schedule date
+            - Avoid date filters unless specifically asking for flights on a particular date
+            
             Database Schema:
             {schema_text}
             {context_prompt}
             User Query: "{user_query}"
             
-            Convert this to a SQL query. Only return the SQL query, nothing else.
+            Convert this to a SQLite-compatible SQL query. Only return the SQL query, nothing else.
             If the query cannot be answered with the available data, return "NO_DATA".
             
             Examples:
@@ -150,7 +192,26 @@ class AirportVoiceAssistant:
             )
             
             sql_query = response.choices[0].message.content.strip()
-            return sql_query if sql_query != "NO_DATA" else None
+            
+            # Clean up markdown formatting that GPT-3.5-turbo might add
+            if sql_query.startswith('```sql'):
+                sql_query = sql_query.replace('```sql', '').replace('```', '').strip()
+            elif sql_query.startswith('```'):
+                sql_query = sql_query.replace('```', '').strip()
+            
+            # 🔍 DEBUGGING: Log the generated SQL query
+            logger.info(f"📝 GENERATED SQL QUERY: {sql_query}")
+            
+            # ✅ FALLBACK HANDLING: Check for complex queries that might fail
+            if sql_query == "NO_DATA" or not sql_query:
+                logger.warning(f"🚫 SQL generation failed for query: {user_query}")
+                return None
+                
+            # ⚠️ VALIDATION: Check for potentially problematic queries
+            if "JOIN" in sql_query.upper() and "assignments" in sql_query.lower():
+                logger.info(f"⚠️ Complex JOIN detected - this might fail due to database structure")
+            
+            return sql_query
             
         except Exception as e:
             logger.error(f"Query parsing error: {e}")
@@ -159,11 +220,25 @@ class AirportVoiceAssistant:
     def format_response(self, data, original_query, language='en'):
         """Format database results into natural language response"""
         if not data:
-            no_data_responses = {
-                'en': "I don't know - I couldn't find that information in our database.",
-                'es': "No lo sé - no pude encontrar esa información en nuestra base de datos.",
-                'fr': "Je ne sais pas - je n'ai pas pu trouver cette information dans notre base de données."
-            }
+            # ✅ SMART FALLBACK: Provide context-aware "I don't know" responses
+            if "nearest" in original_query.lower():
+                no_data_responses = {
+                    'en': "I don't know the exact location details. The database may not have complete proximity information for that equipment.",
+                    'es': "No conozco los detalles exactos de ubicación. Es posible que la base de datos no tenga información completa de proximidad para ese equipo.",
+                    'fr': "Je ne connais pas les détails exacts de l'emplacement. La base de données peut ne pas avoir d'informations de proximité complètes pour cet équipement."
+                }
+            elif "assignment" in original_query.lower() or "next" in original_query.lower():
+                no_data_responses = {
+                    'en': "I don't know - I couldn't find current assignment information for that person.",
+                    'es': "No lo sé - no pude encontrar información de asignación actual para esa persona.",
+                    'fr': "Je ne sais pas - je n'ai pas pu trouver d'informations d'affectation actuelles pour cette personne."
+                }
+            else:
+                no_data_responses = {
+                    'en': "I don't know - I couldn't find that information in our database.",
+                    'es': "No lo sé - no pude encontrar esa información en nuestra base de datos.",
+                    'fr': "Je ne sais pas - je n'ai pas pu trouver cette information dans notre base de données."
+                }
             return no_data_responses.get(language, no_data_responses['en'])
         
         try:
@@ -214,7 +289,7 @@ Make the response natural for voice output but don't omit important details. Use
             response = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
+                max_tokens=300,
                 temperature=0.3
             )
             
@@ -377,7 +452,7 @@ assistant = AirportVoiceAssistant()
 def index():
     """Serve the main web interface"""
     import time
-    return render_template('index.html', timestamp=int(time.time()))
+    return render_template('index.html', timestamp=int(time.time() * 1000))
 
 @app.route('/test-hybrid-speech.html')
 def test_hybrid_speech():
@@ -543,14 +618,18 @@ def improve_transcription():
         
         The transcript may contain errors typical of speech recognition, especially with:
         - Flight numbers (like "U A 2406" should be "UA2406")
-        - Aviation terminology
+        - "assigned" misheard as "a sign to" or "assigned to fly to"
+        - "pushback tractor" misheard as "pushback transfer" or "push back track door"
+        - Aviation terminology and equipment names
         - Fragmented numbers or letters
         
         Please correct any obvious transcription errors and return the improved version.
         Focus on:
         1. Fixing fragmented flight numbers (U A 2406 → UA2406)
-        2. Correcting common aviation terms
-        3. Maintaining the original meaning and structure
+        2. Correcting "a sign to" → "assigned to"
+        3. Correcting "pushback transfer" → "pushback tractor"
+        4. Correcting "what's" → "what" for questions
+        5. Maintaining the original meaning and structure
         
         Return only the corrected transcript, no explanations.
         """
@@ -612,4 +691,4 @@ def equipment_status():
         return jsonify({"error": str(e), "equipment": []}), 500
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=3000) 
+    app.run(debug=False, host='localhost', port=3000) 

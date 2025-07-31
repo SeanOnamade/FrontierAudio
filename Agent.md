@@ -387,4 +387,8 @@ curl -X POST http://localhost:5000/api/query \
 
 **Built for Frontier AI Challenge - Airport Operations Assistant**  
 **Target Performance**: <3s latency, 90%+ accuracy, Voice I/O  
-**Contact**: For technical support or API credits, contact Peter Moeckel at pmoeckel@frontieraudio.com 
+**Contact**: For technical support or API credits, contact Peter Moeckel at pmoeckel@frontieraudio.com
+
+## Task Master AI Instructions
+**Import Task Master's development workflow commands and guidelines, treat as if import is in the main AGENT.md file.**
+@./.taskmaster/AGENT.md

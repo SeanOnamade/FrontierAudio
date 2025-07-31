@@ -3,195 +3,421 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jarvis - Airport Operations Assistant</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/enhanced-style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/personalization.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/performance-dashboard.css') }}">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>JARVIS - Voice Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-style.css') }}?v={{ timestamp }}&bust={{ range(999999) | random }}&clean=true" />
+    <!-- Using system fonts to avoid loading errors -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🛫 JARVIS</h1>
-            <p data-translate="airport_operations_assistant">Airport Operations Voice Assistant</p>
-            <div class="language-selector-container" id="language-selector-container">
-                <!-- Language selector will be injected here -->
-            </div>
+    <div class="app-container">
+        <!-- Background gradient -->
+        <div class="background-gradient"></div>
+        
+        <!-- Header -->
+        <header class="header">
+            <h1 class="app-title">JARVIS</h1>
+            <p class="app-subtitle">Airport Operations Assistant</p>
         </header>
 
-        <main>
-            <div class="status-panel">
-                <div class="status-item">
-                    <span class="status-label" data-translate="status">Status:</span>
-                    <span id="status" class="status-value">Initializing...</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label" data-translate="listening">Listening:</span>
-                    <span id="listening-status" class="status-value">No</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label" data-translate="response_time">Last Response Time:</span>
-                    <span id="response-time" class="status-value">-</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">Language:</span>
-                    <span id="current-language" class="status-value">English</span>
-                </div>
-                <div class="status-item" id="user-status" style="display: none;">
-                    <span class="status-label">User:</span>
-                    <span id="current-user" class="status-value">-</span>
-                </div>
-            </div>
-
-            <div class="voice-interface">
-                <div id="visual-feedback" class="visual-feedback">
-                    <div class="waveform">
+        <!-- Main Voice Interface -->
+        <main class="main-interface">
+            <!-- Central Voice Bubble -->
+            <div class="voice-bubble-container">
+                <div id="voice-bubble" class="voice-bubble idle">
+                    <!-- Idle state: solid circle -->
+                    <div class="bubble-core"></div>
+                    
+                    <!-- Listening state: pulsing rings -->
+                    <div class="pulse-ring ring-1"></div>
+                    <div class="pulse-ring ring-2"></div>
+                    <div class="pulse-ring ring-3"></div>
+                    
+                    <!-- Active listening: animated waveform -->
+                    <div class="waveform-container">
+                        <div class="wave-bar"></div>
+                        <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
                         <div class="wave-bar"></div>
                     </div>
+                    
+                    <!-- Processing state: spinning gradient -->
+                    <div class="processing-spinner"></div>
                 </div>
-
-                <div class="controls">
-                    <button id="start-btn" class="btn primary" data-translate="start_voice_assistant">Start Voice Assistant</button>
-                    <button id="stop-btn" class="btn secondary" disabled data-translate="stop_voice_assistant">Stop Assistant</button>
-                    <button id="test-btn" class="btn secondary" data-translate="test_mode">Test Mode</button>
-                    <button id="run-tests-btn" class="btn secondary">Run Tests</button>
-                </div>
-
-                <div class="wake-word-info">
-                    <p>💡 <strong>Always Listening:</strong> Say <strong><span data-wake-word>Jarvis</span></strong> followed by your question</p>
-                    <p class="example">Example: "<span data-wake-word>Jarvis</span>, <span data-translate="test_query_1">what is the status of flight UA2406?</span>"</p>
-                    <p><small>🎤 The assistant starts automatically and listens continuously for the wake word</small></p>
-                </div>
-            </div>
-
-            <!-- Enhanced Settings Panel -->
-            <div class="settings-panel" id="settings-panel">
-                <h3 data-translate="settings">Settings</h3>
                 
-                <div class="setting-group">
-                    <h4 data-translate="voice_settings">Voice Settings</h4>
-                    <div class="setting-item">
-                        <label data-translate="wake_word_sensitivity">Wake Word Sensitivity:</label>
-                        <select id="sensitivity-select">
-                            <option value="low">Low</option>
-                            <option value="medium" selected>Medium</option>
-                            <option value="high">High</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="biometrics-toggle">
-                            <span data-translate="enable_biometrics">Enable Voice Biometrics</span>
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="stress-detection-toggle" checked>
-                            <span data-translate="enable_stress_detection">Enable Stress Detection</span>
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="auto-language-toggle" checked>
-                            <span data-translate="auto_language_detection">Auto Language Detection</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="setting-group">
-                    <h4 data-translate="custom_wake_words">Custom Wake Words</h4>
-                    <div class="setting-item">
-                        <input type="text" id="custom-wake-word-input" placeholder="Add custom wake word">
-                        <button id="add-wake-word-btn" class="btn small">Add</button>
-                    </div>
-                    <div id="custom-wake-words-list" class="custom-wake-words"></div>
+                <!-- Status text under bubble -->
+                <div class="status-container">
+                    <p id="voice-status" class="voice-status">Ready to listen</p>
+                    <p id="voice-hint" class="voice-hint">Say "Jarvis" to start</p>
                 </div>
             </div>
 
-            <div class="conversation-log">
-                <h3 data-translate="conversation_log">Conversation History</h3>
-                <div class="conversation-controls">
-                    <button id="clear-log-btn" class="btn small">Clear</button>
-                    <button id="export-log-btn" class="btn small">Export</button>
-                </div>
-                <div id="log-container">
-                    <div class="log-entry system">
-                        <span class="timestamp">System</span>
-                        <span class="message">Voice assistant ready. Continuously listening for "<span data-wake-word>Jarvis</span>" wake word.</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="test-queries">
-                <h3>Quick Test Queries</h3>
-                <div class="language-tabs">
-                    <button class="tab-btn active" data-lang="en">English</button>
-                    <button class="tab-btn" data-lang="es">Español</button>
-                    <button class="tab-btn" data-lang="fr">Français</button>
-                </div>
-                <div class="test-buttons" id="test-buttons-container">
-                    <!-- Test buttons will be populated by JavaScript -->
-                </div>
-            </div>
-
-            <!-- Performance Monitoring -->
-            <div class="performance-panel" id="performance-panel">
-                <h3>Performance Metrics</h3>
-                <div class="metrics-grid">
-                    <div class="metric-item">
-                        <span class="metric-label">Wake Word Accuracy:</span>
-                        <span id="wake-word-accuracy" class="metric-value">-</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Avg Response Time:</span>
-                        <span id="avg-response-time" class="metric-value">-</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Language Detection Rate:</span>
-                        <span id="language-detection-rate" class="metric-value">-</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Success Rate:</span>
-                        <span id="success-rate" class="metric-value">-</span>
-                    </div>
-                </div>
+            <!-- Quick action buttons -->
+            <div class="quick-actions">
+                <button id="start-btn" class="action-btn primary">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 1C18.5 1 23 5.5 23 12S18.5 23 12 23 1 18.5 1 12 5.5 1 12 1Z" stroke="currentColor" stroke-width="2"/>
+                        <path d="M8 12L16 12" stroke="currentColor" stroke-width="2"/>
+                        <path d="M12 8L12 16" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Start
+                </button>
+                <button id="stop-btn" class="action-btn secondary" disabled>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 1C18.5 1 23 5.5 23 12S18.5 23 12 23 1 18.5 1 12 5.5 1 12 1Z" stroke="currentColor" stroke-width="2"/>
+                        <rect x="9" y="9" width="6" height="6" fill="currentColor"/>
+                    </svg>
+                    Stop
+                </button>
             </div>
         </main>
 
-        <footer>
-            <div class="footer-info">
-                <p>Built for Frontier AI Challenge - Airport Operations Assistant</p>
-                <p>Target: &lt;3s latency, 90%+ accuracy, Voice I/O</p>
+        <!-- Collapsible conversation log -->
+        <div class="conversation-section">
+            <button id="conversation-toggle" class="section-toggle">
+                <span>Conversation</span>
+                <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <div id="conversation-content" class="conversation-content collapsed">
+                <div id="log-container" class="conversation-log">
+                    <div class="log-entry system">
+                        <div class="log-entry-header">
+                            <span class="timestamp">System</span>
+                        </div>
+                        <div class="message">Voice assistant ready. Say "Jarvis" to start.</div>
+                    </div>
+                </div>
+                <div class="conversation-controls">
+                    <button id="clear-log-btn" class="control-btn">Clear</button>
+                    <button id="export-log-btn" class="control-btn">Export</button>
+                </div>
             </div>
-        </footer>
+        </div>
+
+        <!-- Settings panel -->
+        <div class="settings-section">
+            <button id="settings-toggle" class="section-toggle">
+                <span>Settings</span>
+                <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <div id="settings-content" class="settings-content collapsed">
+                <div class="premium-settings-grid">
+                    <!-- Sensitivity Setting Card -->
+                    <div class="premium-setting-card">
+                        <div class="setting-card-header">
+                            <div class="setting-icon sensitivity-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Wake Word Sensitivity</h3>
+                                <p class="setting-card-subtitle">Adjust voice detection threshold</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <div class="custom-select-wrapper">
+                                <select id="sensitivity-select" class="premium-select">
+                                    <option value="low">Low</option>
+                                    <option value="medium" selected>Medium</option>
+                                    <option value="high">High</option>
+                                </select>
+                                <div class="select-arrow">
+                                    <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+                                        <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Voice Biometrics Card -->
+                    <div class="premium-setting-card">
+                        <div class="setting-card-header">
+                            <div class="setting-icon biometrics-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12Z" fill="currentColor"/>
+                                    <path d="M12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Voice Biometrics</h3>
+                                <p class="setting-card-subtitle">Unique voice identification</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle">
+                                <input type="checkbox" id="biometrics-toggle" class="premium-checkbox">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Stress Detection Card -->
+                    <div class="premium-setting-card">
+                        <div class="setting-card-header">
+                            <div class="setting-icon stress-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 5.5V9.5L21 9ZM3 9V7L9 5.5V9.5L3 9ZM15 11.5V15.5L21 17V19L15 17.5V13.5L12 13L9 13.5V17.5L3 19V17L9 15.5V11.5L12 11L15 11.5Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Stress Detection</h3>
+                                <p class="setting-card-subtitle">Monitor vocal stress patterns</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle">
+                                <input type="checkbox" id="stress-detection-toggle" class="premium-checkbox" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Language Detection Card -->
+                    <div class="premium-setting-card">
+                        <div class="setting-card-header">
+                            <div class="setting-icon language-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12.87 15.07L10.33 12.56L10.36 12.53C12.1 10.59 13.34 8.36 14.07 6H17V4H10V2H8V4H1V6H12.17C11.5 7.92 10.44 9.75 9 11.35C8.07 10.32 7.3 9.19 6.69 8H4.69C5.42 9.63 6.42 11.17 7.67 12.56L2.58 17.58L4 19L9 14L12.11 17.11L12.87 15.07ZM18.5 10H16.5L12 22H14L15.12 19H19.87L21 22H23L18.5 10ZM15.88 17L17.5 12.67L19.12 17H15.88Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Auto Language Detection</h3>
+                                <p class="setting-card-subtitle">Automatically detect spoken language</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle">
+                                <input type="checkbox" id="auto-language-toggle" class="premium-checkbox" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- User Profile Card -->
+                    <div class="premium-setting-card user-profile-card">
+                        <div class="setting-card-header">
+                            <div class="user-avatar">
+                                <div class="avatar-placeholder">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                                        <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12Z" fill="currentColor"/>
+                                        <path d="M12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="currentColor"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">User Profile</h3>
+                                <p class="setting-card-subtitle">Personalization & preferences</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <button class="profile-edit-btn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                    <path d="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25Z" fill="currentColor"/>
+                                    <path d="M20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z" fill="currentColor"/>
+                                </svg>
+                                Edit
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Performance Dashboard Card - REMOVED per user request -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden status elements for compatibility -->
+        <div style="display: none;">
+            <span id="status">Ready</span>
+            <span id="listening-status">No</span>
+            <span id="response-time">-</span>
+            <span id="current-language">English</span>
+            <span id="current-user">-</span>
+            <div id="visual-feedback"><div class="waveform"></div></div>
+            <button id="test-btn">Test</button>
+            <button id="run-tests-btn">Run Tests</button>
+        </div>
     </div>
 
-    <!-- Enhanced UI & UX Files -->
-    <script src="{{ url_for('static', filename='js/theme-manager.js') }}?v={{ timestamp }}"></script>
-    <script src="{{ url_for('static', filename='js/user-personalization.js') }}?v={{ timestamp }}"></script>
-    <script src="{{ url_for('static', filename='js/performance-dashboard.js') }}?v={{ timestamp }}"></script>
+
+
+    <!-- 🚀🎯 FINAL NUCLEAR SCRIPT - TARGETS REAL ACCESSIBILITY PANEL & DASHBOARD 🎯🚀 -->
+    <script>
+        console.log('🚀🎯🎯 FINAL NUCLEAR SCRIPT LOADING - TARGETING REAL ACCESSIBILITY CONTROLS 🎯🎯🚀');
+        
+        // IMMEDIATELY prevent old scripts from affecting UI
+        window.FINAL_NUCLEAR_MODE = true;
+        
+        // FINAL NUCLEAR TRANSFORM FUNCTION
+        const runFinalNuclearTransform = () => {
+            console.log('🚀💥 FINAL NUCLEAR STRIKE - TARGETING REAL CONTROLS 💥🚀');
+            
+            // STEP 1: Global body transformation
+            document.body.style.cssText = `
+                margin: 0 !important;
+                padding: 0 !important;
+                background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%) !important;
+                color: #ffffff !important;
+                font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif !important;
+                min-height: 100vh !important;
+                overflow-x: hidden !important;
+            `;
+            
+            // STEP 2: Container transformation
+            const container = document.querySelector('.app-container');
+            if (container) {
+                container.style.cssText = `
+                    display: flex !important;
+                    flex-direction: column !important;
+                    align-items: center !important;
+                    min-height: 100vh !important;
+                    width: 100% !important;
+                    background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%) !important;
+                    padding: 40px 20px !important;
+                `;
+                console.log('✅ Container FINAL NUKED');
+            }
+            
+            // STEP 3: Rainbow title transformation
+            const title = document.querySelector('.app-title');
+            if (title) {
+                title.style.cssText = `
+                    font-size: 4rem !important;
+                    font-weight: 800 !important;
+                    background: linear-gradient(45deg, #ff0066, #ff6600, #ffaa00, #66ff00, #00ff66, #0066ff, #6600ff, #ff0066) !important;
+                    background-size: 800% 800% !important;
+                    -webkit-background-clip: text !important;
+                    -webkit-text-fill-color: transparent !important;
+                    background-clip: text !important;
+                    margin: 0 0 16px 0 !important;
+                    animation: rainbowFlow 3s ease-in-out infinite !important;
+                    text-align: center !important;
+                `;
+                console.log('✅ Rainbow Title FINAL NUKED');
+            }
+            
+            // STEP 4: Voice bubble transformation
+            const bubble = document.querySelector('.voice-bubble');
+            if (bubble) {
+                bubble.style.cssText = `
+                    width: 200px !important;
+                    height: 200px !important;
+                    border-radius: 50% !important;
+                    background: linear-gradient(135deg, #007aff 0%, #5856d6 100%) !important;
+                    box-shadow: 0 20px 40px rgba(0, 122, 255, 0.3) !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    margin: 40px 0 !important;
+                `;
+                console.log('✅ Bubble FINAL NUKED');
+            }
+            
+            // Theme controls removed per user request
+            console.log('✅ THEME CONTROLS DISABLED');
+            
+            // Performance Dashboard removed per user request
+            console.log('✅ PERFORMANCE DASHBOARD DISABLED');
+            
+            // STEP 5: Transform sections
+            const settingsSection = document.querySelector('.settings-section');
+            if (settingsSection) {
+                settingsSection.style.cssText = `
+                    display: block !important;
+                    width: 100% !important;
+                    max-width: 1200px !important;
+                    margin: 40px 0 !important;
+                    background: linear-gradient(145deg, rgba(0, 255, 136, 0.2) 0%, rgba(0, 204, 255, 0.15) 100%) !important;
+                    border-radius: 40px !important;
+                    border: 4px solid rgba(0, 255, 136, 0.5) !important;
+                    overflow: hidden !important;
+                    box-shadow: 0 32px 96px rgba(0, 255, 136, 0.4) !important;
+                    backdrop-filter: blur(50px) !important;
+                `;
+                
+                const settingsToggle = settingsSection.querySelector('.section-toggle');
+                if (settingsToggle) {
+                    settingsToggle.style.cssText = `
+                        width: 100% !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        padding: 48px !important;
+                        background: linear-gradient(135deg, rgba(0, 255, 136, 0.3), rgba(0, 204, 255, 0.2)) !important;
+                        border: none !important;
+                        color: #00ff88 !important;
+                        font-size: 32px !important;
+                        font-weight: 900 !important;
+                        cursor: pointer !important;
+                        text-transform: uppercase !important;
+                        letter-spacing: 4px !important;
+                        text-shadow: 3px 3px 12px rgba(0, 0, 0, 0.9) !important;
+                    `;
+                    settingsToggle.textContent = '🎛️ ADVANCED SYSTEM CONTROLS 🎛️';
+                }
+                console.log('✅ SETTINGS SECTION FINAL NUKED');
+            }
+            
+            console.log('🚀💥🚀 FINAL NUCLEAR TRANSFORMATION COMPLETE! 🚀💥🚀');
+            console.log('🎯 REAL ACCESSIBILITY CONTROLS OBLITERATED AND TRANSFORMED');
+        };
+        
+        // RUN FINAL NUCLEAR IMMEDIATELY AND REPEATEDLY
+        console.log('🚀 STARTING FINAL NUCLEAR SEQUENCE');
+        
+        // Run immediately
+        runFinalNuclearTransform();
+        
+        // Run on DOM ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', runFinalNuclearTransform);
+        }
+        
+        // Run multiple times to catch late-loading elements (including dynamically created ones)
+        setTimeout(runFinalNuclearTransform, 100);
+        setTimeout(runFinalNuclearTransform, 300);
+        setTimeout(runFinalNuclearTransform, 800);
+        setTimeout(runFinalNuclearTransform, 1500);
+        setTimeout(runFinalNuclearTransform, 3000);
+        setTimeout(runFinalNuclearTransform, 5000);
+        
+        console.log('🚀 FINAL NUCLEAR SCRIPT FULLY LOADED 🚀');
+    </script>
     
+
     <!-- Hybrid Speech Recognition Files -->
     <script src="{{ url_for('static', filename='js/audio-environment-detector.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/enhanced-web-speech.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/whisper-api-client.js') }}?v={{ timestamp }}"></script>
     
     <!-- Core JavaScript Files -->
+
+    <!-- Scripts (now run AFTER nuclear transformation) -->
+    <script src="{{ url_for('static', filename='js/theme-manager.js') }}?v={{ timestamp }}"></script>
+    <!-- Performance dashboard disabled per user request -->
+    <!-- <script src="{{ url_for('static', filename='js/performance-dashboard.js') }}?v={{ timestamp }}"></script> -->
+
     <script src="{{ url_for('static', filename='js/language-manager.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/enhanced-wake-word.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/voice-biometrics.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/test-suite.js') }}?v={{ timestamp }}"></script>
-    
-    <!-- New Conversation & Context Enhancement Files -->
     <script src="{{ url_for('static', filename='js/conversation-memory.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/smart-query-processor.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/proactive-assistant.js') }}?v={{ timestamp }}"></script>
-    
     <script src="{{ url_for('static', filename='js/voice-assistant.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/wake-word.js') }}?v={{ timestamp }}"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ timestamp }}"></script>
+    <script src="{{ url_for('static', filename='js/modern-app.js') }}?v={{ timestamp }}"></script>
 </body>
 </html> 

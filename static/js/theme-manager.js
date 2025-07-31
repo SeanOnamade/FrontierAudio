@@ -12,13 +12,11 @@ class ThemeManager {
     }
 
     init() {
-        this.createThemeControls();
-        this.createAccessibilityPanel();
-        this.applyStoredTheme();
-        this.setupKeyboardNavigation();
-        this.setupFontSizeControls();
-        this.setupMotionControls();
+        // Theme controls disabled per user request
+        // this.createThemeControls();
         this.bindEvents();
+        this.applyTheme();
+        this.applyPreferences();
     }
 
     createThemeControls() {
@@ -50,50 +48,6 @@ class ThemeManager {
         document.body.insertBefore(skipLink, document.body.firstChild);
     }
 
-    createAccessibilityPanel() {
-        const accessibilityPanel = document.createElement('div');
-        accessibilityPanel.id = 'accessibility-panel';
-        accessibilityPanel.className = 'accessibility-panel';
-        accessibilityPanel.setAttribute('role', 'dialog');
-        accessibilityPanel.setAttribute('aria-labelledby', 'accessibility-title');
-        accessibilityPanel.innerHTML = `
-            <h3 id="accessibility-title">Accessibility Options</h3>
-            <div class="accessibility-control">
-                <label for="font-size-slider">Font Size:</label>
-                <input type="range" id="font-size-slider" min="12" max="24" value="16" step="1" aria-describedby="font-size-value">
-                <span id="font-size-value">16px</span>
-            </div>
-            <div class="accessibility-control">
-                <label for="line-height-slider">Line Height:</label>
-                <input type="range" id="line-height-slider" min="1.2" max="2.0" value="1.6" step="0.1" aria-describedby="line-height-value">
-                <span id="line-height-value">1.6</span>
-            </div>
-            <div class="accessibility-control">
-                <label for="motion-toggle">
-                    <input type="checkbox" id="motion-toggle" ${this.userPreferences.reduceMotion ? 'checked' : ''}>
-                    Reduce Motion
-                </label>
-            </div>
-            <div class="accessibility-control">
-                <label for="keyboard-nav-toggle">
-                    <input type="checkbox" id="keyboard-nav-toggle" ${this.userPreferences.keyboardNavigation ? 'checked' : ''}>
-                    Enhanced Keyboard Navigation
-                </label>
-            </div>
-            <div class="accessibility-control">
-                <label for="sound-toggle">
-                    <input type="checkbox" id="sound-toggle" ${this.userPreferences.soundFeedback ? 'checked' : ''}>
-                    Sound Feedback
-                </label>
-            </div>
-            <div class="accessibility-control">
-                <button id="reset-preferences" class="btn small">Reset to Defaults</button>
-            </div>
-        `;
-
-        document.querySelector('.theme-controls').after(accessibilityPanel);
-    }
-
     bindEvents() {
         // Theme toggle buttons
         document.querySelectorAll('.theme-toggle[data-theme]').forEach(button => {
@@ -102,117 +56,61 @@ class ThemeManager {
             });
         });
 
-        // Accessibility panel toggle
-        document.getElementById('accessibility-toggle').addEventListener('click', () => {
-            this.toggleAccessibilityPanel();
-        });
+        // Accessibility panel toggle is now handled in bindAccessibilityToggle()
 
         // Font size control
         const fontSizeSlider = document.getElementById('font-size-slider');
         const fontSizeValue = document.getElementById('font-size-value');
-        fontSizeSlider.addEventListener('input', (e) => {
-            const size = e.target.value;
-            this.setFontSize(size);
-            fontSizeValue.textContent = `${size}px`;
-        });
+        if (fontSizeSlider && fontSizeValue) {
+            fontSizeSlider.addEventListener('input', (e) => {
+                const size = e.target.value;
+                this.setFontSize(size);
+                fontSizeValue.textContent = `${size}px`;
+            });
+        }
 
         // Line height control
         const lineHeightSlider = document.getElementById('line-height-slider');
         const lineHeightValue = document.getElementById('line-height-value');
-        lineHeightSlider.addEventListener('input', (e) => {
-            const height = e.target.value;
-            this.setLineHeight(height);
-            lineHeightValue.textContent = height;
-        });
+        if (lineHeightSlider && lineHeightValue) {
+            lineHeightSlider.addEventListener('input', (e) => {
+                const height = e.target.value;
+                this.setLineHeight(height);
+                lineHeightValue.textContent = height;
+            });
+        }
 
         // Motion toggle
-        document.getElementById('motion-toggle').addEventListener('change', (e) => {
-            this.setReduceMotion(e.target.checked);
-        });
+        const motionToggle = document.getElementById('motion-toggle');
+        if (motionToggle) {
+            motionToggle.addEventListener('change', (e) => {
+                this.setReduceMotion(e.target.checked);
+            });
+        }
 
         // Keyboard navigation toggle
-        document.getElementById('keyboard-nav-toggle').addEventListener('change', (e) => {
-            this.setKeyboardNavigation(e.target.checked);
-        });
+        const keyboardToggle = document.getElementById('keyboard-nav-toggle');
+        if (keyboardToggle) {
+            keyboardToggle.addEventListener('change', (e) => {
+                this.setKeyboardNavigation(e.target.checked);
+            });
+        }
 
         // Sound feedback toggle
-        document.getElementById('sound-toggle').addEventListener('change', (e) => {
-            this.setSoundFeedback(e.target.checked);
-        });
+        const soundToggle = document.getElementById('sound-toggle');
+        if (soundToggle) {
+            soundToggle.addEventListener('change', (e) => {
+                this.setSoundFeedback(e.target.checked);
+            });
+        }
 
-        // Reset preferences
-        document.getElementById('reset-preferences').addEventListener('click', () => {
-            this.resetPreferences();
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                switch (e.key) {
-                    case 'k':
-                        e.preventDefault();
-                        this.toggleAccessibilityPanel();
-                        break;
-                    case '1':
-                        e.preventDefault();
-                        this.setTheme('light');
-                        break;
-                    case '2':
-                        e.preventDefault();
-                        this.setTheme('dark');
-                        break;
-                    case '3':
-                        e.preventDefault();
-                        this.setTheme('high-contrast');
-                        break;
-                    case '+':
-                    case '=':
-                        e.preventDefault();
-                        this.increaseFontSize();
-                        break;
-                    case '-':
-                        e.preventDefault();
-                        this.decreaseFontSize();
-                        break;
-                }
-            }
-        });
-
-        // Detect tab navigation
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Tab' && !this.isKeyboardNavigation) {
-                this.enableKeyboardNavigation();
-            }
-        });
-
-        // Detect mouse usage
-        document.addEventListener('mousedown', () => {
-            if (this.isKeyboardNavigation) {
-                this.disableKeyboardNavigation();
-            }
-        });
-
-        // Close accessibility panel when clicking outside
-        document.addEventListener('click', (e) => {
-            const panel = document.getElementById('accessibility-panel');
-            const toggle = document.getElementById('accessibility-toggle');
-            if (panel.classList.contains('active') && 
-                !panel.contains(e.target) && 
-                !toggle.contains(e.target)) {
-                this.toggleAccessibilityPanel();
-            }
-        });
-
-        // Escape key to close panels
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                const panel = document.getElementById('accessibility-panel');
-                if (panel.classList.contains('active')) {
-                    this.toggleAccessibilityPanel();
-                    document.getElementById('accessibility-toggle').focus();
-                }
-            }
-        });
+        // Reset preferences button
+        const resetBtn = document.getElementById('reset-preferences');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                this.resetPreferences();
+            });
+        }
     }
 
     setTheme(theme) {
@@ -240,9 +138,13 @@ class ThemeManager {
 
     toggleAccessibilityPanel() {
         const panel = document.getElementById('accessibility-panel');
+        const header = document.getElementById('accessibility-header');
+        const toggleButton = document.querySelector('.accessibility-toggle');
         const isActive = panel.classList.contains('active');
         
         panel.classList.toggle('active');
+        header.classList.toggle('active');
+        toggleButton.setAttribute('aria-expanded', !isActive);
         
         if (!isActive) {
             // Focus first control when opening

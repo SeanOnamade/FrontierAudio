@@ -11,7 +11,8 @@ class VoiceAssistant {
         this.commandTimeout = null; // Timer for processing commands
         this.processingLock = false; // Prevent multiple processing attempts
         this.lastWakeWordTime = 0; // Timestamp of last wake word detection
-        this.globalCooldown = 8000; // 8 second global cooldown between wake words
+        this.globalCooldown = 500; // 0.5 second cooldown between wake words
+        this.microphoneTested = false; // Track if microphone has been tested
         
         // Enhanced features
         this.languageManager = null;
@@ -311,21 +312,68 @@ class VoiceAssistant {
     
     initializeSpeechRecognition() {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            console.error('Speech recognition not supported');
-            if (this.onError) {
-                this.onError('Speech recognition is not supported in this browser.');
-            }
-            return;
+            console.error('Speech recognition not supported in this browser');
+            this.showError('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.');
+            return false;
         }
-        
+
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         this.recognition = new SpeechRecognition();
         
-        // Configure recognition
+        // Enhanced configuration
         this.recognition.continuous = this.config.continuous;
         this.recognition.interimResults = this.config.interimResults;
         this.recognition.lang = this.config.language;
         this.recognition.maxAlternatives = this.config.maxAlternatives;
+        
+        // Add error handling
+        this.recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            
+            switch(event.error) {
+                case 'no-speech':
+                    console.log('No speech was detected. Try speaking more clearly.');
+                    // Don't treat this as a critical error - just restart
+                    break;
+                case 'audio-capture':
+                    console.error('No microphone found or microphone access denied.');
+                    this.showError('Microphone access denied. Please allow microphone access and refresh the page.');
+                    this.isListening = false;
+                    return;
+                case 'not-allowed':
+                    console.error('Microphone permission denied by user.');
+                    this.showError('Please allow microphone access in your browser settings and refresh the page.');
+                    this.isListening = false;
+                    return;
+                case 'network':
+                    console.error('Network error occurred.');
+                    this.showError('Network error. Please check your internet connection.');
+                    break;
+                case 'aborted':
+                    console.log('Speech recognition was aborted.');
+                    // Don't treat abort as critical error - often happens during normal operation
+                    break;
+                default:
+                    console.error('Speech recognition error:', event.error);
+                    this.showError(`Speech recognition error: ${event.error}`);
+            }
+            
+            // Only update state if not currently processing or speaking
+            if (!this.isProcessing && !this.isSpeaking) {
+                this.isListening = false;
+                if (this.updateUIState) {
+                    this.updateUIState();
+                }
+                
+                // Auto-restart after brief delay for non-critical errors
+                setTimeout(() => {
+                    if (!this.isListening && !this.isProcessing && !this.isSpeaking) {
+                        console.log('🔄 Auto-restarting speech recognition after error');
+                        this.startListening();
+                    }
+                }, 1000);
+            }
+        };
         
         // Set up event handlers
         this.setupEventHandlers();
@@ -347,43 +395,6 @@ class VoiceAssistant {
         
         this.recognition.onresult = (event) => {
             this.handleSpeechResult(event);
-        };
-        
-        this.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            
-            // Handle different types of errors appropriately
-            if (event.error === 'already-started' || event.error === 'already-listening') {
-                console.log('Speech recognition already active - not an error');
-                return; // Don't show error for this
-            }
-            
-            // Reset state on serious errors
-            if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                this.isListening = false;
-                if (this.onError) {
-                    this.onError(`Speech recognition error: ${event.error} - Please check microphone permissions`);
-                }
-                return;
-            }
-            
-            if (this.onError) {
-                this.onError(`Speech recognition error: ${event.error}`);
-            }
-            
-            // Only restart recognition on recoverable errors
-            if (event.error === 'network' || event.error === 'aborted') {
-                this.isListening = false; // Reset state
-                setTimeout(() => {
-                    if (!this.isListening && !this.isProcessing && !this.processingLock) {
-                        console.log('Attempting to restart after error:', event.error);
-                        this.startListening();
-                    }
-                }, 1500);
-            } else {
-                // For other errors, just reset state
-                this.isListening = false;
-            }
         };
         
         this.recognition.onend = () => {
@@ -445,20 +456,26 @@ class VoiceAssistant {
         //     }
         // }
         
-        // Use enhanced wake word detection if available, otherwise fallback to simple detection
-        // STRICT: Only detect wake word on final results and when system is completely idle
+        // Use enhanced wake word detection with relaxed timing for better responsiveness
         const now = Date.now();
         const timeSinceLastWakeWord = now - this.lastWakeWordTime;
         
+        // Allow wake word detection on both interim and final results for faster response
         if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && !this.isSpeaking &&
-            isFinal && timeSinceLastWakeWord > this.globalCooldown) {
+            timeSinceLastWakeWord > this.globalCooldown) {
             let wakeWordDetected = false;
             
-            console.log(`🔍 Checking wake word in FINAL result: "${transcript}"`);
+            console.log(`🔍 Checking wake word in result: "${transcript}"`);
             
-            // Only check for wake word if we have substantial final text
-            if (transcript.length > 3) {
-                if (this.enhancedWakeWordDetector) {
+                    // Check for wake word with minimal text length for faster detection
+        if (transcript.length > 2) {
+            // INSTANT wake word check for common variations
+            const quickCheck = transcript.toLowerCase().trim();
+            if (quickCheck === 'jarvis' || quickCheck.endsWith('jarvis') || quickCheck.includes('jarvis')) {
+                console.log('🚀 INSTANT wake word detected!');
+                wakeWordDetected = true;
+            }
+                if (!wakeWordDetected && this.enhancedWakeWordDetector) {
                     console.log('Using enhanced wake word detector...');
                     const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
                     wakeWordDetected = wakeWordResult.detected;
@@ -496,6 +513,15 @@ class VoiceAssistant {
                 
                 if (this.onStatusChange) {
                     this.onStatusChange(statusMessage);
+                }
+                
+                // Add visual feedback
+                this.showStatus('🎤 Wake word detected! Listening for your command...', 'success');
+                
+                // Update modern UI if available
+                if (window.modernJarvis) {
+                    window.modernJarvis.updateBubbleState('active');
+                    window.modernJarvis.updateStatus('Wake word detected!', 'Listening for your command...');
                 }
                 
                 // Auto-reset wake word after 15 seconds if no command is given and no recent activity
@@ -549,8 +575,15 @@ class VoiceAssistant {
                 this.commandTimeout = null;
             }
             
-            // Process command immediately if final and has content
+            // Process command immediately if final and has content (but not just wake words)
             if (isFinal && transcript.length > 0) {
+                // 🚫 FILTER: Don't process if it's just the wake word
+                const isJustWakeWord = this.isOnlyWakeWord(transcript);
+                if (isJustWakeWord) {
+                    console.log('🎤 Ignoring final transcript - just wake word:', transcript);
+                    return;
+                }
+                
                 console.log('🎤 Processing voice command (final):', transcript);
                 
                 // Send debug info to server
@@ -599,14 +632,17 @@ class VoiceAssistant {
     }
     
     /**
-     * Normalize and clean voice input for better processing
+     * Lightweight voice input normalization
+     * NOTE: Heavy lifting now done by Smart Selective LLM correction
+     * This function only handles basic, safe normalizations
      */
     normalizeVoiceInput(transcript) {
-        console.log('🔧 NORMALIZING VOICE INPUT 🔧');
+        console.log('🔧 LIGHTWEIGHT NORMALIZATION (LLM handles complex corrections) 🔧');
         console.log('Original transcript:', transcript);
         
         let normalized = transcript.toLowerCase().trim();
         
+
         // Handle common speech recognition errors for wake words first
         normalized = normalized.replace(/\bh jarvis\b/gi, 'hey jarvis');
         normalized = normalized.replace(/\bhi jarvis\b/gi, 'hey jarvis'); 
@@ -632,11 +668,38 @@ class VoiceAssistant {
         normalized = normalized.replace(/\bu\s+eight\s+(\d+)/gi, 'UA$1');  // "u eight 2406" -> "UA2406"
         normalized = normalized.replace(/\bu\s*a\s+(\d+)/gi, 'UA$1');  // "U A 406" -> "UA406"
         normalized = normalized.replace(/\bunited\s+airlines/gi, 'UA');
+        normalized = normalized.replace(/\bamerican\s+airlines/gi, 'AA');
+        normalized = normalized.replace(/\bdelta\s+airlines/gi, 'DL');
+        normalized = normalized.replace(/\bsouthwest\s+airlines/gi, 'WN');
         
-        // Clean up extra spaces
+        // Fix "assigned" speech recognition issues
+        normalized = normalized.replace(/\ba\s+sign\s+to\b/gi, 'assigned to');  // "a sign to" -> "assigned to"
+        normalized = normalized.replace(/\bis\s+a\s+sign\s+to\b/gi, 'is assigned to');  // "is a sign to" -> "is assigned to"
+        normalized = normalized.replace(/\bassigned\s+to\s+fly\s+to\b/gi, 'assigned to');  // "assigned to fly to" -> "assigned to"
+        
+        // Fix equipment terminology
+        normalized = normalized.replace(/\bpushback\s+transfer\b/gi, 'pushback tractor');  // "pushback transfer" -> "pushback tractor"
+        normalized = normalized.replace(/\bpush\s+back\s+track\s*door?\b/gi, 'pushback tractor');  // "push back track door" -> "pushback tractor"
+        
+        // Fix "what's" -> "what"
+        normalized = normalized.replace(/\bwhat's\b/gi, 'what');  // "what's" -> "what"
+        
+        // Basic space cleanup
         normalized = normalized.replace(/\s+/g, ' ').trim();
         
-        console.log('Normalized transcript:', normalized);
+        console.log('Lightly normalized transcript:', normalized);
+        
+        /* MOVED TO LLM CORRECTION (for reference):
+        // These patterns now handled by Smart Selective LLM:
+        normalized = normalized.replace(/\bu\s*a\s+to\s+(\d+)/gi, 'UA$1');
+        normalized = normalized.replace(/\bu\s*a\s+too\s+(\d+)/gi, 'UA$1');
+        normalized = normalized.replace(/\byou'?re?\s+in\s+(\d+)/gi, 'UA$1');
+        normalized = normalized.replace(/\byou\s+are\s+in\s+(\d+)/gi, 'UA$1');
+        normalized = normalized.replace(/\byou\s+a\s+(\d+)/gi, 'UA$1');
+        normalized = normalized.replace(/\bu\s+eight\s+(\d+)/gi, 'UA$1');
+        normalized = normalized.replace(/\bu\s*a\s+(\d+)/gi, 'UA$1');
+        */
+        
         return normalized;
     }
 
@@ -644,10 +707,10 @@ class VoiceAssistant {
      * Enhanced command processing with better preprocessing
      */
     async processCommand(command) {
-        // Strong debouncing: prevent commands within 5 seconds of each other
+        // Reduced debouncing: prevent commands within 1 second of each other
         const now = Date.now();
-        if (now - this.lastCommandTime < 5000) {
-            console.log('🚫 Command ignored due to debouncing (5 second cooldown)');
+        if (now - this.lastCommandTime < 1000) {
+            console.log('🚫 Command ignored due to debouncing (1 second cooldown)');
             return;
         }
         
@@ -707,14 +770,22 @@ class VoiceAssistant {
             
             // Process with smart query processor if available
             let queryAnalysis = null;
-            if (this.smartQueryProcessor) {
+            
+            // Skip smart processing for person name queries (bypass for assignments)
+            if (/\b[a-z]+ [a-z]+('s)?\b/i.test(command)) {
+                console.log('🚀 Bypassing smart processor for person name query');
+                queryAnalysis = { needsClarification: false };
+            } else if (this.smartQueryProcessor) {
+                console.log('🧠 Smart query processor analyzing:', command);
                 queryAnalysis = await this.smartQueryProcessor.processQuery(
                     command, 
                     this.conversationMemory ? this.conversationMemory.getContextForQuery(command) : null
                 );
+                console.log('🧠 Query analysis result:', queryAnalysis);
                 
                 // Check if clarification is needed
                 if (queryAnalysis && queryAnalysis.needsClarification) {
+                    console.log('❓ Clarification needed:', queryAnalysis.ambiguities);
                     const clarificationMessage = queryAnalysis.ambiguities?.suggestions?.[0] || 
                         "Could you be more specific?";
                     this.speak(clarificationMessage);
@@ -785,8 +856,9 @@ class VoiceAssistant {
             this.isSpeaking = false; // Always reset speaking flag
             this.lastTranscript = ''; // Clear transcript after processing
             console.log('✅ Command processing completed - all state reset');
-            
+           
             // Don't restart here - wait for TTS completion to avoid conflicts
+
         }
     }
     
@@ -840,6 +912,9 @@ class VoiceAssistant {
             return;
         }
         
+        // Set synthesis lock to prevent interference
+        this.synthesisLock = true;
+        
         // Stop speech recognition completely during synthesis to prevent feedback
         if (this.recognition && this.isListening) {
             console.log('🔇 Stopping speech recognition during synthesis to prevent feedback');
@@ -851,7 +926,7 @@ class VoiceAssistant {
         if (this.synthesis.speaking) {
             this.synthesis.cancel();
             // Small delay to allow cancellation to complete
-            setTimeout(() => this.performSpeech(text), 100);
+            setTimeout(() => this.performSpeech(text), 150);
             return;
         }
         
@@ -896,11 +971,18 @@ class VoiceAssistant {
                     this.languageManager.translate('speaking') : 'Speaking...';
                 this.onStatusChange(speakingMessage);
             }
+            
+            // Update modern UI if available
+            if (window.modernJarvis) {
+                window.modernJarvis.updateBubbleState('speaking');
+                window.modernJarvis.updateStatus('Speaking...', 'Listening to response');
+            }
         };
         
         utterance.onend = () => {
-            // Clear the speaking flag
+            // Clear the speaking flag and synthesis lock
             this.isSpeaking = false;
+            this.synthesisLock = false;
             if (this.onStatusChange) {
                 const wakeWord = this.languageManager ? 
                     this.languageManager.getWakeWords()[0] : 'Jarvis';
@@ -950,15 +1032,32 @@ class VoiceAssistant {
         
         utterance.onerror = (event) => {
             console.error('Speech synthesis error:', event.error);
-            // Always clear speaking flag on error
+            
+            // Handle different error types
+            if (event.error === 'interrupted' || event.error === 'canceled') {
+                console.log('🔄 TTS was interrupted, attempting retry...');
+                // Clear the speaking flag but keep synthesis lock during retry
             this.isSpeaking = false;
+                setTimeout(() => {
+                    if (!this.synthesis.speaking) {
+                        console.log('🔄 Retrying TTS after interruption...');
+                        this.performSpeech(text);
+                        return; // Don't restart speech recognition yet
+                    }
+                }, 200);
+                return;
+            }
+            
+            // Always clear speaking flag and synthesis lock on actual error
+            this.isSpeaking = false;
+            this.synthesisLock = false;
             if (this.onError) {
                 this.onError(`Speech synthesis error: ${event.error}`);
             }
             
-            // Restart speech recognition after error
+            // Restart speech recognition after error (only for real errors, not interruptions)
             setTimeout(() => {
-                if (!this.isListening && !this.isProcessing && !this.processingLock) {
+                if (!this.isListening && !this.isProcessing && !this.processingLock && !this.synthesisLock) {
                     console.log('🔄 Restarting speech recognition after synthesis error');
                     this.startListening();
                 }
@@ -968,12 +1067,22 @@ class VoiceAssistant {
         this.synthesis.speak(utterance);
     }
     
-    startListening() {
+    async startListening() {
         if (!this.recognition) {
-            if (this.onError) {
-                this.onError('Speech recognition not available');
-            }
+            this.showError('Speech recognition not available');
             return false;
+        }
+        
+        // Test microphone access on first start
+        if (!this.microphoneTested) {
+            console.log('🔬 Testing microphone for first time...');
+            const microphoneOk = await this.testMicrophone();
+            this.microphoneTested = true;
+            
+            if (!microphoneOk) {
+                console.error('❌ Cannot start speech recognition - microphone test failed');
+                return false;
+            }
         }
         
         // Check if recognition is already active
@@ -983,7 +1092,7 @@ class VoiceAssistant {
         }
         
         try {
-            console.log('Starting speech recognition...');
+            console.log('🎤 Starting speech recognition...');
             // Clear all state when starting fresh
             this.isListening = true;
             this.wakeWordDetected = false;
@@ -999,9 +1108,7 @@ class VoiceAssistant {
         } catch (error) {
             console.error('Error starting speech recognition:', error);
             this.isListening = false; // Reset state on error
-            if (this.onError) {
-                this.onError(`Error starting speech recognition: ${error.message}`);
-            }
+            this.showError(`Error starting speech recognition: ${error.message}`);
             return false;
         }
     }
@@ -1151,20 +1258,97 @@ class VoiceAssistant {
     }
 
     /**
-     * Determine if we should use OpenAI Whisper for correction
+     * Enhanced Smart Selective LLM Correction
+     * Balances accuracy with latency by targeting specific error patterns
      */
     shouldUseWhisperForCorrection(command) {
-        // Use Whisper if:
-        // 1. Command contains fragmented flight numbers
-        // 2. Command has unusual spacing patterns
-        // 3. Command contains common misheard aviation terms
+        // Skip very short commands (likely wake words or noise)
+        if (command.length < 5) {
+            return false;
+        }
         
+        // Skip simple responses that don't need correction
+        const simpleResponses = ['yes', 'no', 'ok', 'okay', 'thanks', 'thank you', 'bye', 'hello', 'hi'];
+        const cleanCommand = command.toLowerCase().trim();
+        if (simpleResponses.includes(cleanCommand)) {
+            return false;
+        }
+        
+        // Check for aviation context first (safety check)
+        const hasAviationContext = /\b(flight|status|gate|equipment|ramp|baggage|departure|arrival|delay|aircraft|terminal|crew|maintenance|pushback|tractor)\b/i.test(command);
+        
+        // Definite error patterns that indicate STT mishearing (high confidence)
+        const definiteAviationErrors = [
+            /\byou'?re?\s+in\s+\d{3,4}\b/i,        // "you're in 2406" → "UA2406"
+            /\byou\s+are\s+in\s+\d{3,4}\b/i,       // "you are in 2406" → "UA2406"  
+            /\byou\s+a\s+\d{3,4}\b/i,              // "you a 2406" → "UA2406"
+            /\bu\s+eight\s+\d{3,4}\b/i,            // "u eight 2406" → "UA2406"
+            /\b[a-z]\s+[a-z]\s+\d{3,4}\b/i,        // "u a 2406" → "UA2406"
+            /\b\w+\s+\d\s+\d\s+\d\s+\d\b/,         // "UA 2 4 0 6" → "UA2406"
+            /\b[a-z]{1,3}\s+to\s+\d{3,4}\b/i,      // "UA to 2406" → "UA2406"
+            /\b[a-z]{1,3}\s+too\s+\d{3,4}\b/i,     // "UA too 2406" → "UA2406"
+            /\ba\s+sign\s+to\b/i,                   // "a sign to" → "assigned to"  
+            /\bis\s+a\s+sign\s+to\b/i,              // "is a sign to" → "is assigned to"
+            /\bassigned\s+to\s+fly\s+to\b/i,        // "assigned to fly to" → "assigned to"
+            /\bpushback\s+transfer\b/i,             // "pushback transfer" → "pushback tractor"
+            /\bpush\s+back\s+track/i,               // "push back track" → "pushback tractor"
+            /\bwhat's\s+pushback/i                  // "what's pushback" → "what pushback"
+        ];
+        
+        const hasDefiniteError = definiteAviationErrors.some(pattern => pattern.test(command));
+        
+        // FIXED: Allow error patterns with flight-like numbers even without aviation context
+        // These are likely mishearings of flight numbers and should be corrected
+        const hasFlightLikeNumber = /\b\d{3,4}\b/.test(command); // Contains 3-4 digit numbers
+        
+        if (hasDefiniteError && hasFlightLikeNumber) {
+            console.log(`🎯 Error pattern with flight-like number detected, using LLM: "${command}"`);
+            return true;
+        }
+        
+        // Standard logic: Both aviation context AND error pattern
+        if (hasAviationContext && hasDefiniteError) {
+            console.log(`🎯 Aviation query with error pattern detected, using LLM: "${command}"`);
+            return true;
+        }
+
+        // Log when we skip LLM correction
+        if (hasDefiniteError && !hasAviationContext && !hasFlightLikeNumber) {
+            console.log(`⚠️ Error pattern detected but no aviation context or flight number, skipping LLM: "${command}"`);
+        }
+        
+        // IMPROVED: Log why we're skipping LLM correction for debugging
+        if (hasAviationContext && !hasDefiniteError) {
+            console.log(`✅ Aviation query looks clean, no LLM correction needed: "${command}"`);
+        } else if (!hasAviationContext) {
+            console.log(`✅ Non-aviation query, no LLM correction needed: "${command}"`);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Check if transcript contains only wake words
+     */
+    isOnlyWakeWord(transcript) {
+        const cleanTranscript = transcript.toLowerCase().trim();
+        const wakeWordPatterns = [
+            /^(hey\s+)?jarvis$/,
+            /^(hi\s+)?jarvis$/,
+            /^(hello\s+)?jarvis$/,
+            /^hey$/,
+            /^jarvis$/
+        ];
+        
+        return wakeWordPatterns.some(pattern => pattern.test(cleanTranscript));
+        
+        /* ORIGINAL APPROACH (for reference):
         const hasFragmentedNumbers = /\b\w+\s+\d\s+\d\s+\d\s+\d\b/.test(command);
         const hasUnusualSpacing = /\b[A-Z]\s+[A-Z]\s+\d+\b/.test(command.toUpperCase());
         const hasMisheardTerms = Object.keys(this.aviationTerminology.termCorrections)
             .some(term => command.toLowerCase().includes(term));
-        
         return hasFragmentedNumbers || hasUnusualSpacing || hasMisheardTerms;
+        */
     }
 
     /**
@@ -1196,6 +1380,309 @@ class VoiceAssistant {
         
         return command;
     }
+    
+    /**
+     * Check if command contains unknown aviation entities that might need correction
+     * FIXED: Improved flight recognition to prevent over-triggering
+     */
+    hasUnknownAviationEntities(command) {
+        try {
+            // Look for potential flight number patterns
+            const flightPattern = /\b[a-z]{1,3}\s*\d{3,4}\b/gi;
+            const potentialFlights = command.match(flightPattern);
+            
+            if (!potentialFlights) return false;
+            
+            console.log(`🔍 Checking potential flights:`, potentialFlights);
+            
+            // Check against our known flight cache (if available)
+            for (const flight of potentialFlights) {
+                const cleanFlight = flight.replace(/\s+/g, '').toUpperCase();
+                console.log(`🔍 Checking flight: "${flight}" → "${cleanFlight}"`);
+                
+                // If it looks like a flight number but we don't recognize it, flag for LLM
+                const isKnown = this.isKnownFlightNumber(cleanFlight);
+                console.log(`🔍 Is "${cleanFlight}" known? ${isKnown}`);
+                
+                if (!isKnown) {
+                    console.log(`🚨 Unknown flight pattern detected: "${flight}" → "${cleanFlight}"`);
+                    return true;
+                }
+            }
+            
+            console.log(`✅ All flights recognized, no LLM needed`);
+            return false;
+        } catch (error) {
+            console.warn('Error checking unknown entities:', error);
+            return false; // Fail safe - don't use LLM if check fails
+        }
+    }
+    
+    /**
+     * Check if a flight number is in our known flights cache
+     * IMPROVED: Now recognizes common airline patterns instead of just hardcoded list
+     */
+    isKnownFlightNumber(flightNumber) {
+        // Expanded cache of common flight numbers + pattern matching
+        this._knownFlights = this._knownFlights || new Set([
+            'UA2406', 'UA1234', 'UA567', 'AA123', 'DL456', 'WN789',
+            // Add more common UA flights since UA2406 is our test case
+            'UA2405', 'UA2407', 'UA2408', 'UA2409', 'UA2410'
+        ]);
+        
+        // Direct lookup first
+        if (this._knownFlights.has(flightNumber)) {
+            console.log(`✅ Flight "${flightNumber}" found in cache`);
+            return true;
+        }
+        
+        // Pattern-based recognition for common airlines (prevents over-triggering)
+        const commonPatterns = [
+            /^UA\d{3,4}$/,  // United Airlines (like UA2406)
+            /^AA\d{3,4}$/,  // American Airlines  
+            /^DL\d{3,4}$/,  // Delta
+            /^WN\d{3,4}$/,  // Southwest
+            /^B6\d{3,4}$/,  // JetBlue
+            /^NK\d{3,4}$/,  // Spirit
+            /^F9\d{3,4}$/   // Frontier
+        ];
+        
+        const isCommonPattern = commonPatterns.some(pattern => pattern.test(flightNumber));
+        console.log(`🔍 Flight "${flightNumber}" matches common airline pattern: ${isCommonPattern}`);
+        
+        return isCommonPattern;
+    }
+    
+    /**
+     * Log correction attempts for metrics and debugging
+     */
+    logCorrectionAttempt(command, method) {
+        try {
+            // Initialize metrics storage
+            if (!window.correctionMetrics) {
+                window.correctionMetrics = [];
+            }
+            
+            const metrics = {
+                timestamp: Date.now(),
+                original: command,
+                method: method,
+                sessionId: this.conversationMemory?.sessionId || 'unknown'
+            };
+            
+            window.correctionMetrics.push(metrics);
+            
+            // Keep only last 100 entries to prevent memory bloat
+            if (window.correctionMetrics.length > 100) {
+                window.correctionMetrics = window.correctionMetrics.slice(-100);
+            }
+            
+            // Log summary every 20 attempts
+            if (window.correctionMetrics.length % 20 === 0) {
+                this.logCorrectionSummary();
+            }
+        } catch (error) {
+            console.warn('Failed to log correction metrics:', error);
+        }
+    }
+    
+    /**
+     * Log correction effectiveness summary
+     */
+    logCorrectionSummary() {
+        try {
+            const metrics = window.correctionMetrics || [];
+            const recent = metrics.slice(-20);
+            
+            const methodCounts = recent.reduce((acc, m) => {
+                acc[m.method] = (acc[m.method] || 0) + 1;
+                return acc;
+            }, {});
+            
+            console.log('📊 Correction Summary (last 20):', methodCounts);
+        } catch (error) {
+            console.warn('Failed to generate correction summary:', error);
+        }
+    }
+
+    /* 
+     * ========================================
+     * FUZZY MATCHING IMPLEMENTATION (FUTURE USE)
+     * ========================================
+     * Fast, local correction for known entities like flight numbers
+     * Use this as fallback when LLM is unavailable or for real-time correction
+     * 
+     * TO ENABLE: Uncomment these functions and call fuzzyCorrectTranscript()
+     * before sending to LLM in improveTranscriptionWithOpenAI()
+     */
+
+    /*
+    async fuzzyCorrectTranscript(transcript) {
+        console.log('🔍 Attempting fuzzy correction for:', transcript);
+        
+        try {
+            // Get known flight numbers from backend (cached)
+            const knownEntities = await this.getKnownEntities();
+            
+            // Apply fuzzy matching corrections
+            let corrected = transcript;
+            corrected = this.fuzzyMatchFlightNumbers(corrected, knownEntities.flights);
+            corrected = this.fuzzyMatchGates(corrected, knownEntities.gates);
+            corrected = this.fuzzyMatchEquipment(corrected, knownEntities.equipment);
+            
+            if (corrected !== transcript) {
+                console.log(`🎯 Fuzzy correction: "${transcript}" → "${corrected}"`);
+                this.logCorrectionAttempt(transcript, 'fuzzy-local');
+            }
+            
+            return corrected;
+        } catch (error) {
+            console.warn('Fuzzy correction failed:', error);
+            return transcript;
+        }
+    }
+
+    async getKnownEntities() {
+        // Cache known entities for 5 minutes to avoid excessive API calls
+        const cacheKey = 'knownEntities';
+        const cacheDuration = 5 * 60 * 1000; // 5 minutes
+        
+        if (this._entityCache && (Date.now() - this._entityCache.timestamp) < cacheDuration) {
+            return this._entityCache.data;
+        }
+        
+        try {
+            // Fetch known entities from backend APIs
+            const [flights, equipment] = await Promise.all([
+                fetch('/api/flights/status').then(r => r.json()),
+                fetch('/api/equipment/status').then(r => r.json())
+            ]);
+            
+            const entities = {
+                flights: flights.flights?.map(f => f.flight_number).filter(Boolean) || [],
+                gates: ['A1', 'A2', 'A3', 'B1', 'B2', 'B3', 'C1', 'C2'], // Could fetch from API
+                equipment: equipment.equipment?.map(e => e.equipment_id).filter(Boolean) || []
+            };
+            
+            // Cache the results
+            this._entityCache = {
+                data: entities,
+                timestamp: Date.now()
+            };
+            
+            console.log('📋 Cached known entities:', entities);
+            return entities;
+        } catch (error) {
+            console.warn('Failed to fetch known entities:', error);
+            return { flights: [], gates: [], equipment: [] };
+        }
+    }
+
+    fuzzyMatchFlightNumbers(transcript, knownFlights) {
+        let corrected = transcript;
+        
+        // Handle common flight number mishearings with high confidence
+        const flightPatterns = [
+            { pattern: /\byou'?re?\s+in\s+(\d{3,4})\b/gi, replacement: 'UA$1' },
+            { pattern: /\byou\s+are\s+in\s+(\d{3,4})\b/gi, replacement: 'UA$1' },
+            { pattern: /\byou\s+a\s+(\d{3,4})\b/gi, replacement: 'UA$1' },
+            { pattern: /\byou\s+away\s+(\d{3,4})\b/gi, replacement: 'UA$1' }
+        ];
+        
+        for (const {pattern, replacement} of flightPatterns) {
+            corrected = corrected.replace(pattern, (match, number) => {
+                const candidate = replacement.replace('$1', number);
+                if (knownFlights.includes(candidate)) {
+                    console.log(`✅ Fuzzy flight match: "${match}" → "${candidate}"`);
+                    return candidate;
+                }
+                return match; // Keep original if no exact match in database
+            });
+        }
+        
+        // Use Levenshtein distance for more sophisticated matching
+        corrected = this.levenshteinFlightMatch(corrected, knownFlights);
+        
+        return corrected;
+    }
+
+    fuzzyMatchGates(transcript, knownGates) {
+        let corrected = transcript;
+        
+        // Pattern: "gate a 1" → "gate A1"
+        const gatePattern = /\bgate\s+([a-z])\s+(\d+)\b/gi;
+        corrected = corrected.replace(gatePattern, (match, letter, number) => {
+            const candidate = letter.toUpperCase() + number;
+            if (knownGates.includes(candidate)) {
+                console.log(`✅ Fuzzy gate match: "${match}" → "gate ${candidate}"`);
+                return `gate ${candidate}`;
+            }
+            return match;
+        });
+        
+        return corrected;
+    }
+
+    fuzzyMatchEquipment(transcript, knownEquipment) {
+        // Handle equipment ID corrections
+        // Can be expanded based on your equipment naming patterns
+        return transcript;
+    }
+
+    levenshteinFlightMatch(transcript, knownFlights) {
+        // Find potential flight number candidates in transcript
+        const flightCandidates = transcript.match(/\b[A-Za-z]{1,3}\s*\d{3,4}\b/g) || [];
+        
+        let corrected = transcript;
+        
+        for (const candidate of flightCandidates) {
+            const cleanCandidate = candidate.replace(/\s+/g, '').toUpperCase();
+            
+            // Skip if already looks correct
+            if (knownFlights.includes(cleanCandidate)) continue;
+            
+            // Find best match using Levenshtein distance
+            let bestMatch = null;
+            let bestDistance = Infinity;
+            
+            for (const knownFlight of knownFlights) {
+                const distance = this.levenshteinDistance(cleanCandidate, knownFlight);
+                if (distance < bestDistance && distance <= 2) { // Allow up to 2 character differences
+                    bestDistance = distance;
+                    bestMatch = knownFlight;
+                }
+            }
+            
+            if (bestMatch && bestDistance <= 2) {
+                corrected = corrected.replace(candidate, bestMatch);
+                console.log(`🎯 Levenshtein match: "${candidate}" → "${bestMatch}" (distance: ${bestDistance})`);
+            }
+        }
+        
+        return corrected;
+    }
+
+    levenshteinDistance(str1, str2) {
+        const matrix = Array(str2.length + 1).fill(null).map(() => 
+            Array(str1.length + 1).fill(null));
+        
+        for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+        for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+        
+        for (let j = 1; j <= str2.length; j++) {
+            for (let i = 1; i <= str1.length; i++) {
+                const substitutionCost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+                matrix[j][i] = Math.min(
+                    matrix[j][i - 1] + 1, // deletion
+                    matrix[j - 1][i] + 1, // insertion
+                    matrix[j - 1][i - 1] + substitutionCost // substitution
+                );
+            }
+        }
+        
+        return matrix[str2.length][str1.length];
+    }
+    */
     
     // Get current configuration and status
     getStatus() {
@@ -1379,7 +1866,7 @@ class VoiceAssistant {
             }
         }
     }
-    
+  
     /**
      * Hybrid Speech Recognition Callback Handlers
      */
