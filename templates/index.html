@@ -396,10 +396,19 @@
         console.log('🚀 FINAL NUCLEAR SCRIPT FULLY LOADED 🚀');
     </script>
     
+
+    <!-- Hybrid Speech Recognition Files -->
+    <script src="{{ url_for('static', filename='js/audio-environment-detector.js') }}?v={{ timestamp }}"></script>
+    <script src="{{ url_for('static', filename='js/enhanced-web-speech.js') }}?v={{ timestamp }}"></script>
+    <script src="{{ url_for('static', filename='js/whisper-api-client.js') }}?v={{ timestamp }}"></script>
+    
+    <!-- Core JavaScript Files -->
+
     <!-- Scripts (now run AFTER nuclear transformation) -->
     <script src="{{ url_for('static', filename='js/theme-manager.js') }}?v={{ timestamp }}"></script>
     <!-- Performance dashboard disabled per user request -->
     <!-- <script src="{{ url_for('static', filename='js/performance-dashboard.js') }}?v={{ timestamp }}"></script> -->
+
     <script src="{{ url_for('static', filename='js/language-manager.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/enhanced-wake-word.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/voice-biometrics.js') }}?v={{ timestamp }}"></script>

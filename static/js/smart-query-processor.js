@@ -1,12 +1,18 @@
 // Smart Query Processing System for JARVIS
 // Handles query clarification, suggestions, auto-completion, and expansion
 
+console.log('🔄 Loading smart-query-processor.js...');
+
 class SmartQueryProcessor {
     constructor() {
+        console.log('🔧 SmartQueryProcessor constructor called');
         this.commonQueries = new Map();
         this.queryPatterns = new Map();
+        console.log('📝 About to create AmbiguityDetector...');
         this.ambiguityDetector = new AmbiguityDetector();
+        console.log('📝 About to create SuggestionEngine...');
         this.suggestionEngine = new SuggestionEngine();
+        console.log('📝 About to create QueryAutoCompleter...');
         this.autoCompleter = new QueryAutoCompleter();
         
         // Aviation-specific terminology and synonyms
@@ -564,3 +570,6 @@ class QueryAutoCompleter {
         return /\bgate\s+[a-z]?\d+[a-z]?\b/i.test(query);
     }
 }
+
+console.log('✅ SmartQueryProcessor class definition completed');
+console.log('SmartQueryProcessor type:', typeof SmartQueryProcessor);
