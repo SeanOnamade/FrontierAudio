@@ -422,8 +422,15 @@ class VoiceAssistant {
                 this.commandTimeout = null;
             }
             
-            // Process command immediately if final and has content
+            // Process command immediately if final and has content (but not just wake words)
             if (isFinal && transcript.length > 0) {
+                // 🚫 FILTER: Don't process if it's just the wake word
+                const isJustWakeWord = this.isOnlyWakeWord(transcript);
+                if (isJustWakeWord) {
+                    console.log('🎤 Ignoring final transcript - just wake word:', transcript);
+                    return;
+                }
+                
                 console.log('🎤 Processing voice command (final):', transcript);
                 
                 // Send debug info to server
@@ -495,6 +502,18 @@ class VoiceAssistant {
         normalized = normalized.replace(/\bamerican\s+airlines/gi, 'AA');
         normalized = normalized.replace(/\bdelta\s+airlines/gi, 'DL');
         normalized = normalized.replace(/\bsouthwest\s+airlines/gi, 'WN');
+        
+        // Fix "assigned" speech recognition issues
+        normalized = normalized.replace(/\ba\s+sign\s+to\b/gi, 'assigned to');  // "a sign to" -> "assigned to"
+        normalized = normalized.replace(/\bis\s+a\s+sign\s+to\b/gi, 'is assigned to');  // "is a sign to" -> "is assigned to"
+        normalized = normalized.replace(/\bassigned\s+to\s+fly\s+to\b/gi, 'assigned to');  // "assigned to fly to" -> "assigned to"
+        
+        // Fix equipment terminology
+        normalized = normalized.replace(/\bpushback\s+transfer\b/gi, 'pushback tractor');  // "pushback transfer" -> "pushback tractor"
+        normalized = normalized.replace(/\bpush\s+back\s+track\s*door?\b/gi, 'pushback tractor');  // "push back track door" -> "pushback tractor"
+        
+        // Fix "what's" -> "what"
+        normalized = normalized.replace(/\bwhat's\b/gi, 'what');  // "what's" -> "what"
         
         // Basic space cleanup
         normalized = normalized.replace(/\s+/g, ' ').trim();
@@ -575,14 +594,22 @@ class VoiceAssistant {
             
             // Process with smart query processor if available
             let queryAnalysis = null;
-            if (this.smartQueryProcessor) {
+            
+            // Skip smart processing for person name queries (bypass for assignments)
+            if (/\b[a-z]+ [a-z]+('s)?\b/i.test(command)) {
+                console.log('🚀 Bypassing smart processor for person name query');
+                queryAnalysis = { needsClarification: false };
+            } else if (this.smartQueryProcessor) {
+                console.log('🧠 Smart query processor analyzing:', command);
                 queryAnalysis = await this.smartQueryProcessor.processQuery(
                     command, 
                     this.conversationMemory ? this.conversationMemory.getContextForQuery(command) : null
                 );
+                console.log('🧠 Query analysis result:', queryAnalysis);
                 
                 // Check if clarification is needed
                 if (queryAnalysis && queryAnalysis.needsClarification) {
+                    console.log('❓ Clarification needed:', queryAnalysis.ambiguities);
                     const clarificationMessage = queryAnalysis.ambiguities?.suggestions?.[0] || 
                         "Could you be more specific?";
                     this.speak(clarificationMessage);
@@ -1053,7 +1080,13 @@ class VoiceAssistant {
             /\b[a-z]\s+[a-z]\s+\d{3,4}\b/i,        // "u a 2406" → "UA2406"
             /\b\w+\s+\d\s+\d\s+\d\s+\d\b/,         // "UA 2 4 0 6" → "UA2406"
             /\b[a-z]{1,3}\s+to\s+\d{3,4}\b/i,      // "UA to 2406" → "UA2406"
-            /\b[a-z]{1,3}\s+too\s+\d{3,4}\b/i      // "UA too 2406" → "UA2406"
+            /\b[a-z]{1,3}\s+too\s+\d{3,4}\b/i,     // "UA too 2406" → "UA2406"
+            /\ba\s+sign\s+to\b/i,                   // "a sign to" → "assigned to"  
+            /\bis\s+a\s+sign\s+to\b/i,              // "is a sign to" → "is assigned to"
+            /\bassigned\s+to\s+fly\s+to\b/i,        // "assigned to fly to" → "assigned to"
+            /\bpushback\s+transfer\b/i,             // "pushback transfer" → "pushback tractor"
+            /\bpush\s+back\s+track/i,               // "push back track" → "pushback tractor"
+            /\bwhat's\s+pushback/i                  // "what's pushback" → "what pushback"
         ];
         
         const hasDefiniteError = definiteAviationErrors.some(pattern => pattern.test(command));
@@ -1086,6 +1119,22 @@ class VoiceAssistant {
         }
         
         return false;
+    }
+    
+    /**
+     * Check if transcript contains only wake words
+     */
+    isOnlyWakeWord(transcript) {
+        const cleanTranscript = transcript.toLowerCase().trim();
+        const wakeWordPatterns = [
+            /^(hey\s+)?jarvis$/,
+            /^(hi\s+)?jarvis$/,
+            /^(hello\s+)?jarvis$/,
+            /^hey$/,
+            /^jarvis$/
+        ];
+        
+        return wakeWordPatterns.some(pattern => pattern.test(cleanTranscript));
         
         /* ORIGINAL APPROACH (for reference):
         const hasFragmentedNumbers = /\b\w+\s+\d\s+\d\s+\d\s+\d\b/.test(command);

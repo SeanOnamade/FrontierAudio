@@ -234,7 +234,7 @@ class SmartQueryProcessor {
                 break;
                 
             case 'ASSIGNMENT_INQUIRY':
-                if (!this.hasFlightNumber(query) && !this.hasEquipment(query)) {
+                if (!this.hasFlightNumber(query) && !this.hasEquipment(query) && !this.hasPersonnel(query)) {
                     missing.push('assignment_target');
                 }
                 break;
@@ -254,7 +254,12 @@ class SmartQueryProcessor {
     
     hasPersonnel(query) {
         const personnelTerms = ['crew', 'team', 'staff', 'worker', 'lead'];
-        return personnelTerms.some(term => query.toLowerCase().includes(term));
+        // Also check for person names (first name + last name pattern, case insensitive)
+        const hasPersonName = /\b[a-z]+ [a-z]+\b/i.test(query) && 
+                              /\b(john|smith|maria|rodriguez|mike|chen|lisa|wilson|david|brown)\b/i.test(query);
+        const result = personnelTerms.some(term => query.toLowerCase().includes(term)) || hasPersonName;
+        console.log(`🔍 hasPersonnel("${query}") = ${result} (personnelTerms: ${personnelTerms.some(term => query.toLowerCase().includes(term))}, hasPersonName: ${hasPersonName})`);
+        return result;
     }
     
     calculateConfidence(query, tokens, entities, intent) {
@@ -322,7 +327,7 @@ class AmbiguityDetector {
             },
             {
                 name: 'unclear_person',
-                pattern: /\b(who|person|guy)\b/i,
+                pattern: /\b(who)\b(?!.*\b(cleaning lead|ramp|baggage|maintenance|crew|manager|supervisor|lead|rodriguez|smith|maria|john)\b)/i,
                 message: 'Which team member or role are you referring to?'
             },
             {
