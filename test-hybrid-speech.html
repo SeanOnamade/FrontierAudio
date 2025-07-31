@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Speech Recognition Test - JARVIS</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .status {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .metric {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+        }
+        
+        .metric h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        
+        .metric .value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #28a745;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .success { background: #d4edda; border-color: #28a745; }
+        .warning { background: #fff3cd; border-color: #ffc107; }
+        .error { background: #f8d7da; border-color: #dc3545; }
+        
+        .log {
+            background: #1e1e1e;
+            color: #ffffff;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            height: 300px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        
+        .routing-indicator {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .provider-webspeech {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .provider-whisper {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .confidence-indicator.high {
+            color: #28a745;
+        }
+        
+        .confidence-indicator.medium {
+            color: #ffc107;
+        }
+        
+        .confidence-indicator.low {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Hybrid Speech Recognition Test</h1>
+        <p>Testing AudioEnvironmentDetector integration with VoiceAssistant</p>
+        
+        <div id="status" class="status">
+            Ready to test hybrid speech recognition...
+        </div>
+        
+        <div class="controls">
+            <button onclick="startTest()">Start Test</button>
+            <button onclick="runEnvironmentTest()">Test Environment Detector</button>
+            <button onclick="runEnhancedSpeechTest()">Test Enhanced Web Speech</button>
+            <button onclick="runWhisperTest()">Test Whisper API</button>
+            <button onclick="runFullTest()">Run Full Test Suite</button>
+            <button onclick="setWhisperAPIKey()">Set Whisper API Key</button>
+            <button onclick="toggleHybridMode()">Toggle Hybrid Mode</button>
+            <button onclick="forceWebSpeech()">Force Web Speech</button>
+            <button onclick="forceWhisper()">Force Whisper</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>📊 Real-time Metrics</h2>
+        <div class="metrics">
+            <div class="metric">
+                <h4>Noise Level</h4>
+                <div class="value" id="noiseLevel">-∞ dB FS</div>
+                <div id="noiseCharacterization">Unknown</div>
+            </div>
+            <div class="metric">
+                <h4>Speech Quality</h4>
+                <div class="value" id="speechQuality">N/A</div>
+                <div id="qualityRecommendation">N/A</div>
+            </div>
+            <div class="metric">
+                <h4>Current Provider</h4>
+                <div class="value" id="currentProvider">
+                    <span class="routing-indicator provider-webspeech">Web Speech API</span>
+                </div>
+                <div id="providerReason">Default</div>
+            </div>
+            <div class="metric">
+                <h4>Speech Confidence</h4>
+                <div class="value confidence-indicator" id="speechConfidence">N/A</div>
+                <div id="confidenceDetails">No recent speech</div>
+            </div>
+            <div class="metric">
+                <h4>Performance</h4>
+                <div class="value" id="performanceMetrics">N/A</div>
+                <div id="performanceDetails">No data</div>
+            </div>
+            <div class="metric">
+                <h4>Whisper Costs</h4>
+                <div class="value" id="whisperCosts">$0.00</div>
+                <div id="whisperBudget">Budget remaining</div>
+            </div>
+            <div class="metric">
+                <h4>Hybrid Mode</h4>
+                <div class="value" id="hybridStatus">Enabled</div>
+                <div id="hybridDetails">Monitoring environment</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>📝 Test Log</h2>
+        <div id="log" class="log"></div>
+    </div>
+    
+    <!-- Load our JavaScript modules -->
+    <script src="static/js/audio-environment-detector.js"></script>
+    <script src="static/js/test-audio-environment.js"></script>
+    <script src="static/js/enhanced-web-speech.js"></script>
+    <script src="static/js/test-enhanced-web-speech.js"></script>
+    <script src="static/js/whisper-api-client.js"></script>
+    <script src="static/js/test-whisper-api.js"></script>
+    <script src="static/js/conversation-memory.js"></script>
+    <script src="static/js/smart-query-processor.js"></script>
+    <script src="static/js/proactive-assistant.js"></script>
+    <script src="static/js/voice-assistant.js"></script>
+    
+    <script>
+        // Global variables
+        let voiceAssistant = null;
+        let audioDetector = null;
+        let metricsInterval = null;
+        
+        // Log management
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('log');
+            const logEntry = document.createElement('div');
+            
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logEntry.innerHTML = `<span style="color: #888">[${timestamp}]</span> ${prefix} ${message}`;
+            
+            logDiv.appendChild(logEntry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('Log cleared');
+        }
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+        
+        // Start basic test
+        async function startTest() {
+            log('Starting basic hybrid speech test...');
+            updateStatus('Initializing hybrid speech recognition...', 'warning');
+            
+            try {
+                // Test AudioEnvironmentDetector alone first
+                audioDetector = new AudioEnvironmentDetector();
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for init
+                
+                log('✅ AudioEnvironmentDetector initialized successfully');
+                
+                // Get initial environmental status
+                const envStatus = audioDetector.getEnvironmentalStatus();
+                log(`Environment: Noise ${envStatus.noise.level.toFixed(1)} dB (${envStatus.noise.characterization})`);
+                log(`Routing: ${envStatus.routing.provider} (confidence: ${envStatus.routing.confidence.toFixed(2)})`);
+                
+                updateStatus('Basic test completed successfully', 'success');
+                startMetricsUpdate();
+                
+            } catch (error) {
+                log(`❌ Test failed: ${error.message}`, 'error');
+                updateStatus('Test failed - check browser permissions', 'error');
+            }
+        }
+        
+        // Test environment detector alone
+        async function runEnvironmentTest() {
+            log('Running AudioEnvironmentDetector test suite...');
+            updateStatus('Running environment detector tests...', 'warning');
+            
+            try {
+                const testResults = await testAudioEnvironmentDetector();
+                
+                if (testResults.failed === 0) {
+                    log(`✅ All tests passed! (${testResults.passed}/${testResults.total})`, 'success');
+                    updateStatus(`All tests passed! (${testResults.passed}/${testResults.total})`, 'success');
+                } else {
+                    log(`⚠️ Some tests failed: ${testResults.passed}/${testResults.total} passed`, 'warning');
+                    updateStatus(`${testResults.passed}/${testResults.total} tests passed`, 'warning');
+                }
+                
+                // Log detailed results
+                testResults.details.forEach(result => {
+                    log(`${result.passed ? '✅' : '❌'} ${result.test}: ${result.details}`);
+                });
+                
+            } catch (error) {
+                log(`❌ Test suite failed: ${error.message}`, 'error');
+                updateStatus('Test suite failed', 'error');
+            }
+        }
+        
+        // Test Enhanced Web Speech API
+        async function runEnhancedSpeechTest() {
+            log('Running Enhanced Web Speech API test suite...');
+            updateStatus('Testing Enhanced Web Speech API...', 'warning');
+            
+            try {
+                const testResults = await testEnhancedWebSpeech();
+                
+                if (testResults.failed === 0) {
+                    log(`✅ All Enhanced Web Speech tests passed! (${testResults.passed}/${testResults.total})`, 'success');
+                    updateStatus(`Enhanced Web Speech: ${testResults.passed}/${testResults.total} tests passed`, 'success');
+                } else {
+                    log(`⚠️ Some Enhanced Web Speech tests failed: ${testResults.passed}/${testResults.total} passed`, 'warning');
+                    updateStatus(`Enhanced Web Speech: ${testResults.passed}/${testResults.total} tests passed`, 'warning');
+                }
+                
+                // Log detailed results
+                testResults.details.forEach(result => {
+                    log(`${result.passed ? '✅' : '❌'} ${result.test}: ${result.details}`);
+                });
+                
+            } catch (error) {
+                log(`❌ Enhanced Web Speech test suite failed: ${error.message}`, 'error');
+                updateStatus('Enhanced Web Speech tests failed', 'error');
+            }
+        }
+        
+        // Test Whisper API Client
+        async function runWhisperTest() {
+            log('Running Whisper API Client test suite...');
+            updateStatus('Testing Whisper API Client...', 'warning');
+            
+            try {
+                const testResults = await testWhisperAPI();
+                
+                if (testResults.failed === 0) {
+                    log(`✅ All Whisper API tests passed! (${testResults.passed}/${testResults.total})`, 'success');
+                    updateStatus(`Whisper API: ${testResults.passed}/${testResults.total} tests passed`, 'success');
+                } else {
+                    log(`⚠️ Some Whisper API tests failed: ${testResults.passed}/${testResults.total} passed`, 'warning');
+                    updateStatus(`Whisper API: ${testResults.passed}/${testResults.total} tests passed`, 'warning');
+                }
+                
+                // Log detailed results
+                testResults.details.forEach(result => {
+                    log(`${result.passed ? '✅' : '❌'} ${result.test}: ${result.details}`);
+                });
+                
+            } catch (error) {
+                log(`❌ Whisper API test suite failed: ${error.message}`, 'error');
+                updateStatus('Whisper API tests failed', 'error');
+            }
+        }
+        
+        // Set Whisper API key
+        function setWhisperAPIKey() {
+            const apiKey = prompt('Enter your OpenAI API key for Whisper:');
+            if (apiKey && apiKey.trim()) {
+                if (voiceAssistant) {
+                    voiceAssistant.setWhisperAPIKey(apiKey.trim());
+                    log('✅ Whisper API key configured', 'success');
+                    updateStatus('Whisper API key configured', 'success');
+                } else {
+                    log('❌ VoiceAssistant not initialized', 'error');
+                }
+            } else {
+                log('⚠️ No API key provided', 'warning');
+            }
+        }
+        
+        // Run full integrated test
+        async function runFullTest() {
+            log('Running full VoiceAssistant integration test...');
+            updateStatus('Testing VoiceAssistant with hybrid speech...', 'warning');
+            
+            try {
+                // Initialize VoiceAssistant with hybrid support
+                voiceAssistant = new VoiceAssistant();
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for full init
+                
+                // Check if hybrid mode is working
+                const envStatus = voiceAssistant.getEnvironmentalStatus();
+                if (envStatus) {
+                    log('✅ VoiceAssistant hybrid integration working');
+                    log(`Environment monitoring active: ${JSON.stringify(envStatus, null, 2)}`);
+                    
+                    const recommendation = voiceAssistant.getProviderRecommendation();
+                    log(`Provider recommendation: ${recommendation.provider} (${recommendation.reason})`);
+                    
+                    updateStatus('Full integration test completed successfully', 'success');
+                } else {
+                    log('⚠️ Hybrid mode not available, falling back to basic mode', 'warning');
+                    updateStatus('Integration test completed - hybrid mode unavailable', 'warning');
+                }
+                
+                startMetricsUpdate();
+                
+            } catch (error) {
+                log(`❌ Integration test failed: ${error.message}`, 'error');
+                updateStatus('Integration test failed', 'error');
+            }
+        }
+        
+        // Control functions
+        function toggleHybridMode() {
+            if (voiceAssistant) {
+                const currentStatus = voiceAssistant.hybridModeEnabled;
+                voiceAssistant.setHybridMode(!currentStatus);
+                log(`Hybrid mode ${!currentStatus ? 'enabled' : 'disabled'}`);
+                updateMetricsDisplay();
+            } else {
+                log('VoiceAssistant not initialized', 'warning');
+            }
+        }
+        
+        function forceWebSpeech() {
+            if (voiceAssistant) {
+                voiceAssistant.setForcedProvider('webspeech');
+                log('Forced provider: Web Speech API');
+                updateMetricsDisplay();
+            } else if (audioDetector) {
+                const decision = audioDetector.getRoutingRecommendation({ forceProvider: 'webspeech' });
+                log(`Forced routing: ${decision.provider} (${decision.reason})`);
+                updateMetricsDisplay();
+            } else {
+                log('No detector available', 'warning');
+            }
+        }
+        
+        function forceWhisper() {
+            if (voiceAssistant) {
+                voiceAssistant.setForcedProvider('whisper');
+                log('Forced provider: Whisper AI');
+                updateMetricsDisplay();
+            } else if (audioDetector) {
+                const decision = audioDetector.getRoutingRecommendation({ forceProvider: 'whisper' });
+                log(`Forced routing: ${decision.provider} (${decision.reason})`);
+                updateMetricsDisplay();
+            } else {
+                log('No detector available', 'warning');
+            }
+        }
+        
+        // Metrics update
+        function startMetricsUpdate() {
+            if (metricsInterval) clearInterval(metricsInterval);
+            
+            metricsInterval = setInterval(updateMetricsDisplay, 1000);
+            updateMetricsDisplay();
+        }
+        
+        function updateMetricsDisplay() {
+            const detector = voiceAssistant?.audioEnvironmentDetector || audioDetector;
+            
+            if (!detector) {
+                document.getElementById('noiseLevel').textContent = 'N/A';
+                document.getElementById('noiseCharacterization').textContent = 'Detector not available';
+                return;
+            }
+            
+            try {
+                // Update noise level
+                const noiseLevel = detector.getNoiseLevel();
+                const characterization = detector.getNoiseCharacterization(noiseLevel);
+                document.getElementById('noiseLevel').textContent = 
+                    noiseLevel === -Infinity ? '-∞ dB FS' : `${noiseLevel.toFixed(1)} dB FS`;
+                document.getElementById('noiseCharacterization').textContent = characterization;
+                
+                // Update speech quality
+                const qualityScore = detector.getRecentQualityScore();
+                if (qualityScore !== null) {
+                    document.getElementById('speechQuality').textContent = qualityScore.toFixed(2);
+                    document.getElementById('qualityRecommendation').textContent = 
+                        qualityScore >= 0.6 ? 'Good for Web Speech' : 'Better for Whisper';
+                } else {
+                    document.getElementById('speechQuality').textContent = 'N/A';
+                    document.getElementById('qualityRecommendation').textContent = 'No speech detected';
+                }
+                
+                // Update current provider
+                const routing = detector.getRoutingRecommendation();
+                const providerEl = document.getElementById('currentProvider');
+                const providerClass = routing.provider === 'whisper' ? 'provider-whisper' : 'provider-webspeech';
+                const providerName = routing.provider === 'whisper' ? 'Whisper AI' : 'Web Speech API';
+                
+                providerEl.innerHTML = `<span class="routing-indicator ${providerClass}">${providerName}</span>`;
+                document.getElementById('providerReason').textContent = routing.reason;
+                
+                // Update speech confidence
+                if (voiceAssistant && voiceAssistant.lastConfidenceScore) {
+                const confidence = voiceAssistant.lastConfidenceScore;
+                document.getElementById('speechConfidence').textContent = `${(confidence * 100).toFixed(0)}%`;
+                document.getElementById('speechConfidence').className = 
+                `value confidence-indicator ${confidence > 0.8 ? 'high' : confidence > 0.6 ? 'medium' : 'low'}`;
+                    document.getElementById('confidenceDetails').textContent = 
+                    confidence > 0.8 ? 'High confidence' : confidence > 0.6 ? 'Medium confidence' : 'Low confidence';
+                } else {
+                    document.getElementById('speechConfidence').textContent = 'N/A';
+                document.getElementById('confidenceDetails').textContent = 'No recent speech';
+            }
+            
+            // Update performance metrics
+            if (voiceAssistant && voiceAssistant.lastPerformanceMetrics) {
+                const perf = voiceAssistant.lastPerformanceMetrics;
+                document.getElementById('performanceMetrics').textContent = `${perf.latency}ms`;
+                document.getElementById('performanceDetails').textContent = 
+                    `Success: ${(perf.successRate * 100).toFixed(0)}%`;
+            } else {
+                document.getElementById('performanceMetrics').textContent = 'N/A';
+                document.getElementById('performanceDetails').textContent = 'No data';
+            }
+            
+            // Update Whisper costs
+            if (voiceAssistant && voiceAssistant.lastWhisperCosts) {
+                const costs = voiceAssistant.lastWhisperCosts;
+                document.getElementById('whisperCosts').textContent = `$${costs.daily.toFixed(3)}`;
+                document.getElementById('whisperBudget').textContent = 
+                    `Daily: ${((costs.daily / 5.0) * 100).toFixed(0)}% used`;
+            } else {
+                document.getElementById('whisperCosts').textContent = '$0.00';
+                document.getElementById('whisperBudget').textContent = 'No usage yet';
+            }
+            
+            // Update hybrid status
+            if (voiceAssistant) {
+                document.getElementById('hybridStatus').textContent = 
+                    voiceAssistant.hybridModeEnabled ? 'Enabled' : 'Disabled';
+                
+                const whisperStatus = voiceAssistant.getWhisperStatus();
+                const hasWhisperKey = whisperStatus ? whisperStatus.hasAPIKey : false;
+                
+                document.getElementById('hybridDetails').textContent = 
+                    voiceAssistant.hybridModeEnabled ? 
+                        (hasWhisperKey ? 'Full hybrid mode' : 'Web Speech only (no Whisper key)') : 
+                        'Using Web Speech only';
+            } else {
+                document.getElementById('hybridStatus').textContent = 'Testing Mode';
+                document.getElementById('hybridDetails').textContent = 'Environment detector only';
+            }
+                
+            } catch (error) {
+                log(`Metrics update error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            log('Hybrid Speech Recognition Test Page loaded');
+            log('Click "Start Test" to begin basic testing');
+            log('Click "Run Full Test Suite" for comprehensive testing');
+            
+            // Debug: Check if classes are available
+            log(`Classes available: ConversationMemory: ${typeof ConversationMemory}, SmartQueryProcessor: ${typeof SmartQueryProcessor}`);
+        });
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (metricsInterval) clearInterval(metricsInterval);
+            if (audioDetector) audioDetector.dispose();
+            if (voiceAssistant?.audioEnvironmentDetector) {
+                voiceAssistant.audioEnvironmentDetector.dispose();
+            }
+        });
+    </script>
+</body>
+</html>

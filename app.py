@@ -379,6 +379,12 @@ def index():
     import time
     return render_template('index.html', timestamp=int(time.time()))
 
+@app.route('/test-hybrid-speech.html')
+def test_hybrid_speech():
+    """Serve the hybrid speech test page"""
+    from flask import send_from_directory
+    return send_from_directory('.', 'test-hybrid-speech.html')
+
 @app.route('/api/query', methods=['POST'])
 def process_voice_query():
     """Process voice query and return response with conversation context"""

@@ -25,6 +25,13 @@ class VoiceAssistant {
         this.smartQueryProcessor = null;
         this.proactiveAssistant = null;
         
+        // Hybrid Speech Recognition features
+        this.audioEnvironmentDetector = null;
+        this.speechRecognitionProvider = 'webspeech'; // Current provider: 'webspeech' | 'whisper'
+        this.hybridModeEnabled = true; // Enable/disable hybrid functionality
+        this.enhancedWebSpeech = null; // Enhanced Web Speech API instance
+        this.whisperClient = null; // Whisper API Client instance
+        
         // Configuration
         this.config = {
             continuous: true,
@@ -141,6 +148,146 @@ class VoiceAssistant {
             this.voiceBiometrics.onAuthenticationFailure = (confidence) => {
                 this.handleAuthenticationFailure(confidence);
             };
+        }
+        
+        // Initialize audio environment detector for hybrid speech recognition
+        if (this.hybridModeEnabled && typeof AudioEnvironmentDetector !== 'undefined') {
+            try {
+                console.log('Initializing AudioEnvironmentDetector for hybrid speech...');
+                this.audioEnvironmentDetector = new AudioEnvironmentDetector();
+                
+                // Set up callbacks for environmental monitoring
+                this.audioEnvironmentDetector.onNoiseUpdate = (noiseLevel, characterization) => {
+                    this.handleNoiseUpdate(noiseLevel, characterization);
+                };
+                
+                this.audioEnvironmentDetector.onQualityUpdate = (quality) => {
+                    this.handleQualityUpdate(quality);
+                };
+                
+                this.audioEnvironmentDetector.onRoutingDecision = (decision) => {
+                    this.handleRoutingDecision(decision);
+                };
+                
+                console.log('✅ AudioEnvironmentDetector initialized for hybrid speech recognition');
+            } catch (error) {
+                console.warn('❌ Failed to initialize AudioEnvironmentDetector:', error);
+                this.hybridModeEnabled = false; // Fallback to basic mode
+            }
+        } else {
+            console.log('Hybrid speech recognition disabled or AudioEnvironmentDetector not available');
+        }
+        
+        // Initialize Enhanced Web Speech API
+        if (this.hybridModeEnabled && typeof EnhancedWebSpeechAPI !== 'undefined') {
+            try {
+                console.log('Initializing Enhanced Web Speech API...');
+                this.enhancedWebSpeech = new EnhancedWebSpeechAPI({
+                    continuous: this.config.continuous,
+                    interimResults: this.config.interimResults,
+                    language: this.config.language,
+                    enableConfidenceNormalization: true,
+                    enableErrorRecovery: true,
+                    enableAviationOptimization: true,
+                    maxRetries: 3
+                });
+                
+                // Set up callbacks for enhanced speech recognition
+                this.enhancedWebSpeech.onResult = (results) => {
+                    this.handleEnhancedSpeechResult(results);
+                };
+                
+                this.enhancedWebSpeech.onError = (error) => {
+                    this.handleEnhancedSpeechError(error);
+                };
+                
+                this.enhancedWebSpeech.onStart = () => {
+                    this.handleEnhancedSpeechStart();
+                };
+                
+                this.enhancedWebSpeech.onEnd = () => {
+                    this.handleEnhancedSpeechEnd();
+                };
+                
+                this.enhancedWebSpeech.onConfidenceUpdate = (confidence) => {
+                    this.handleConfidenceUpdate(confidence);
+                };
+                
+                this.enhancedWebSpeech.onPerformanceUpdate = (metrics) => {
+                    this.handlePerformanceUpdate(metrics);
+                };
+                
+                console.log('✅ Enhanced Web Speech API initialized');
+            } catch (error) {
+                console.warn('❌ Failed to initialize Enhanced Web Speech API:', error);
+                this.enhancedWebSpeech = null; // Fallback to basic Web Speech API
+            }
+        } else {
+            console.log('Enhanced Web Speech API disabled or not available');
+        }
+        
+        // Initialize Whisper API Client
+        if (this.hybridModeEnabled && typeof WhisperAPIClient !== 'undefined') {
+            try {
+                console.log('Initializing Whisper API Client...');
+                this.whisperClient = new WhisperAPIClient({
+                    // Try to use existing OpenAI API key from environment/config
+                    apiKey: this.getOpenAIAPIKey(),
+                    timeout: 10000, // 10 second timeout for Whisper
+                    maxRetries: 2,
+                    language: 'en',
+                    responseFormat: 'verbose_json',
+                    
+                    // Cost limits (conservative defaults)
+                    costLimits: {
+                        dailyCostLimit: 5.0, // $5 per day
+                        monthlyCostLimit: 50.0, // $50 per month
+                        requestCostLimit: 0.50 // $0.50 per request
+                    },
+                    
+                    // Rate limits
+                    rateLimits: {
+                        requestsPerMinute: 20,
+                        requestsPerHour: 300,
+                        concurrentRequests: 2
+                    },
+                    
+                    // Segmentation configuration
+                    segmentationConfig: {
+                        maxSegmentDuration: 25, // 25 seconds (under Whisper's 30s limit)
+                        enableVAD: true,
+                        vadThreshold: 0.01
+                    }
+                });
+                
+                // Set up Whisper callbacks
+                this.whisperClient.onResult = (result) => {
+                    this.handleWhisperResult(result);
+                };
+                
+                this.whisperClient.onError = (error) => {
+                    this.handleWhisperError(error);
+                };
+                
+                this.whisperClient.onCostUpdate = (costs) => {
+                    this.handleWhisperCostUpdate(costs);
+                };
+                
+                this.whisperClient.onRateLimitWarning = (warning) => {
+                    this.handleWhisperRateLimitWarning(warning);
+                };
+                
+                this.whisperClient.onProgress = (progress) => {
+                    this.handleWhisperProgress(progress);
+                };
+                
+                console.log('✅ Whisper API Client initialized (API key required for use)');
+            } catch (error) {
+                console.warn('❌ Failed to initialize Whisper API Client:', error);
+                this.whisperClient = null; // Fallback to Web Speech only
+            }
+        } else {
+            console.log('Whisper API Client disabled or not available');
         }
         
         this.initializeSpeechRecognition();
@@ -460,8 +607,30 @@ class VoiceAssistant {
         
         let normalized = transcript.toLowerCase().trim();
         
-        // Simple flight number normalization - avoid complex regex that might duplicate text
-        normalized = normalized.replace(/\bu\s*a\s+(\d+)/gi, 'UA$1');
+        // Handle common speech recognition errors for wake words first
+        normalized = normalized.replace(/\bh jarvis\b/gi, 'hey jarvis');
+        normalized = normalized.replace(/\bhi jarvis\b/gi, 'hey jarvis'); 
+        normalized = normalized.replace(/\bhey jervis\b/gi, 'hey jarvis');
+        
+        // Remove wake words from the beginning of the command
+        normalized = normalized.replace(/^.*?\b(jarvis|hey jarvis)\s*/i, '');
+        normalized = normalized.trim();
+        
+        // If the command is empty after wake word removal, skip processing
+        if (!normalized || normalized.length < 2) {
+            console.log('🚫 Command empty after wake word removal');
+            return '';
+        }
+        
+        // Enhanced flight number normalization for better recognition
+        normalized = normalized.replace(/\bu\s*a\s+to\s+(\d+)/gi, 'UA$1');  // "UA to 406" -> "UA406"
+        normalized = normalized.replace(/\bu\s*a\s+too\s+(\d+)/gi, 'UA$1');  // "UA too 406" -> "UA406"
+        normalized = normalized.replace(/\byou'?re?\s+in\s+(\d+)/gi, 'UA$1');  // "you're in 2406" -> "UA2406"
+        normalized = normalized.replace(/\byou\s+are\s+in\s+(\d+)/gi, 'UA$1');  // "you are in 2406" -> "UA2406"
+        normalized = normalized.replace(/\byou\s+a\s+(\d+)/gi, 'UA$1');  // "you a 2406" -> "UA2406"
+        normalized = normalized.replace(/\byou\s+away\s+(\d+)/gi, 'UA$1');  // "you away 2406" -> "UA2406" (NEW!)
+        normalized = normalized.replace(/\bu\s+eight\s+(\d+)/gi, 'UA$1');  // "u eight 2406" -> "UA2406"
+        normalized = normalized.replace(/\bu\s*a\s+(\d+)/gi, 'UA$1');  // "U A 406" -> "UA406"
         normalized = normalized.replace(/\bunited\s+airlines/gi, 'UA');
         
         // Clean up extra spaces
@@ -507,6 +676,13 @@ class VoiceAssistant {
         // Normalize the voice input first
         const originalCommand = command;
         command = this.normalizeVoiceInput(command);
+        
+        // If command is empty after normalization, reset and return
+        if (!command || command.trim().length === 0) {
+            console.log('🚫 Command empty after normalization - resetting state');
+            this.resetProcessingState();
+            return;
+        }
         
         // Clean up the command (remove wake word if still present)
         command = this.cleanCommand(command);
@@ -610,13 +786,7 @@ class VoiceAssistant {
             this.lastTranscript = ''; // Clear transcript after processing
             console.log('✅ Command processing completed - all state reset');
             
-            // Restart speech recognition after processing is complete
-            setTimeout(() => {
-                if (!this.isListening && !this.isProcessing && !this.processingLock) {
-                    console.log('🔄 Restarting speech recognition after command processing');
-                    this.startListening();
-                }
-            }, 1000);
+            // Don't restart here - wait for TTS completion to avoid conflicts
         }
     }
     
@@ -740,13 +910,42 @@ class VoiceAssistant {
                 this.onStatusChange(readyMessage);
             }
             
-            // Restart speech recognition after synthesis is complete
+            // Force a clean restart after synthesis is complete
             setTimeout(() => {
-                if (!this.isListening && !this.isProcessing && !this.processingLock) {
-                    console.log('🔄 Restarting speech recognition after synthesis completed');
-                    this.startListening();
+                if (!this.isProcessing && !this.processingLock && !this.synthesisLock) {
+                    console.log('🔄 Force restarting speech recognition after synthesis completed');
+                    
+                    // Force reset Enhanced Web Speech API state first
+                    if (this.enhancedWebSpeech) {
+                        this.enhancedWebSpeech.reset();
+                    }
+                    
+                    // Force stop all recognition
+                    this.stopListening();
+                    
+                    // Reset all state variables
+                    this.isListening = false;
+                    this.lastTranscript = '';
+                    this.wakeWordDetected = false;
+                    this.resetProcessingState();
+                    
+                    // Clear any timeouts
+                    if (this.commandTimeout) {
+                        clearTimeout(this.commandTimeout);
+                        this.commandTimeout = null;
+                    }
+                    
+                    // Start fresh with longer delay
+                    setTimeout(() => {
+                        console.log('🚀 Starting fresh recognition');
+                        try {
+                            this.startListening();
+                        } catch (error) {
+                            console.error('Failed to restart recognition:', error);
+                        }
+                    }, 250);
                 }
-            }, 500);
+            }, 750);
         };
         
         utterance.onerror = (event) => {
@@ -1039,5 +1238,982 @@ class VoiceAssistant {
             console.error('Test query error:', error);
             throw error;
         }
+    }
+
+    /**
+     * Test microphone access
+     */
+    async testMicrophone() {
+        try {
+            console.log('Testing microphone access...');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('✅ Microphone access granted');
+            
+            // Stop the stream after testing
+            stream.getTracks().forEach(track => track.stop());
+            
+            this.showStatus('Microphone access granted! You can now use voice commands.', 'success');
+            return true;
+        } catch (error) {
+            console.error('❌ Microphone test failed:', error);
+            
+            let errorMessage = 'Microphone access failed: ';
+            switch (error.name) {
+                case 'NotAllowedError':
+                    errorMessage += 'Permission denied. Please allow microphone access.';
+                    break;
+                case 'NotFoundError':
+                    errorMessage += 'No microphone found.';
+                    break;
+                case 'NotReadableError':
+                    errorMessage += 'Microphone is being used by another application.';
+                    break;
+                default:
+                    errorMessage += error.message;
+            }
+            
+            this.showError(errorMessage);
+            return false;
+        }
+    }
+
+    /**
+     * Show status message to user
+     */
+    showStatus(message, type = 'info') {
+        console.log(`[${type.toUpperCase()}] ${message}`);
+        
+        // Create or update status display
+        let statusDiv = document.getElementById('voice-status');
+        if (!statusDiv) {
+            statusDiv = document.createElement('div');
+            statusDiv.id = 'voice-status';
+            statusDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                max-width: 300px;
+                padding: 10px;
+                border-radius: 5px;
+                z-index: 1000;
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+            `;
+            document.body.appendChild(statusDiv);
+        }
+        
+        // Set color based on type
+        const colors = {
+            success: '#d4edda',
+            error: '#f8d7da',
+            warning: '#fff3cd',
+            info: '#d1ecf1'
+        };
+        
+        statusDiv.style.backgroundColor = colors[type] || colors.info;
+        statusDiv.textContent = message;
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (statusDiv.parentNode) {
+                statusDiv.parentNode.removeChild(statusDiv);
+            }
+        }, 5000);
+    }
+
+    /**
+     * Show error message
+     */
+    showError(message) {
+        this.showStatus(message, 'error');
+    }
+
+    /**
+     * Show when system is ready to listen again
+     */
+    showReadyStatus() {
+        const now = Date.now();
+        const timeSinceLastWakeWord = now - this.lastWakeWordTime;
+        
+        if (timeSinceLastWakeWord >= this.globalCooldown && !this.isProcessing && !this.wakeWordDetected) {
+            this.showStatus('🟢 Ready! Say "Jarvis" to activate.', 'info');
+        }
+    }
+
+    /**
+     * Update UI state indicators
+     */
+    updateUIState() {
+        // Update visual indicators based on current state
+        const statusIndicator = document.querySelector('.voice-status-indicator');
+        if (statusIndicator) {
+            if (this.isListening && !this.wakeWordDetected) {
+                statusIndicator.textContent = '🟢 Listening for "Jarvis"...';
+                statusIndicator.className = 'voice-status-indicator listening';
+            } else if (this.wakeWordDetected && !this.isProcessing) {
+                statusIndicator.textContent = '🎤 Say your command...';
+                statusIndicator.className = 'voice-status-indicator wake-detected';
+            } else if (this.isProcessing) {
+                statusIndicator.textContent = '⏳ Processing...';
+                statusIndicator.className = 'voice-status-indicator processing';
+            } else if (this.isSpeaking) {
+                statusIndicator.textContent = '🔊 Speaking...';
+                statusIndicator.className = 'voice-status-indicator speaking';
+            } else {
+                statusIndicator.textContent = '⭕ Ready';
+                statusIndicator.className = 'voice-status-indicator ready';
+            }
+        }
+
+        // Update button states
+        const startBtn = document.getElementById('startVoiceBtn');
+        const stopBtn = document.getElementById('stopVoiceBtn');
+        
+        if (startBtn && stopBtn) {
+            if (this.isListening) {
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+            } else {
+                startBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+            }
+        }
+    }
+    
+    /**
+     * Hybrid Speech Recognition Callback Handlers
+     */
+    
+    /**
+     * Handle noise level updates from AudioEnvironmentDetector
+     * @param {number} noiseLevel - Current noise level in dB FS
+     * @param {string} characterization - Human-readable noise level
+     */
+    handleNoiseUpdate(noiseLevel, characterization) {
+        // Reduce logging frequency to prevent console spam
+        if (!this.lastNoiseLogTime) this.lastNoiseLogTime = 0;
+        const now = Date.now();
+        
+        // Only log noise updates every 5 seconds or when noise level changes significantly
+        if (now - this.lastNoiseLogTime > 5000 || 
+            !this.lastCharacterization || 
+            this.lastCharacterization !== characterization) {
+            console.log(`🔊 Noise Update: ${noiseLevel.toFixed(1)} dB FS (${characterization})`);
+            this.lastNoiseLogTime = now;
+            this.lastCharacterization = characterization;
+        }
+        
+        // Optionally update status indicator with noise info
+        if (this.onStatusChange && characterization === 'very_loud') {
+            this.onStatusChange(`High noise environment detected (${noiseLevel.toFixed(1)} dB)`);
+        }
+    }
+    
+    /**
+     * Handle speech quality updates from AudioEnvironmentDetector
+     * @param {Object} quality - Quality assessment object
+     */
+    handleQualityUpdate(quality) {
+        console.log(`🎯 Speech Quality: ${quality.score.toFixed(2)} (${quality.recommendation})`);
+        
+        // Store quality info for routing decisions
+        this.lastQualityScore = quality.score;
+        this.lastQualityRecommendation = quality.recommendation;
+    }
+    
+    /**
+     * Handle routing decisions from AudioEnvironmentDetector
+     * @param {Object} decision - Routing decision object
+     */
+    handleRoutingDecision(decision) {
+        const oldProvider = this.speechRecognitionProvider;
+        this.speechRecognitionProvider = decision.provider;
+        
+        console.log(`🔄 Speech Provider: ${decision.provider} (confidence: ${decision.confidence.toFixed(2)}, reason: ${decision.reason})`);
+        
+        // Log provider switches
+        if (oldProvider !== decision.provider) {
+            console.log(`🔀 Provider switched: ${oldProvider} → ${decision.provider}`);
+            
+            // Optionally notify user of provider switch in high-visibility scenarios
+            if (decision.reason === 'high_noise' || decision.reason === 'low_quality') {
+                if (this.onStatusChange) {
+                    this.onStatusChange(`Switching to ${decision.provider === 'whisper' ? 'enhanced' : 'standard'} recognition`);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Get current environmental status for hybrid speech system
+     * @returns {Object|null} Environmental status or null if not available
+     */
+    getEnvironmentalStatus() {
+        if (!this.audioEnvironmentDetector) return null;
+        
+        return this.audioEnvironmentDetector.getEnvironmentalStatus();
+    }
+    
+    /**
+     * Get current speech recognition provider recommendation
+     * @param {Object} options - Optional parameters for routing decision
+     * @returns {Object|null} Routing recommendation or null if not available
+     */
+    getProviderRecommendation(options = {}) {
+        if (!this.audioEnvironmentDetector) {
+            return { provider: 'webspeech', confidence: 0.5, reason: 'no_detector' };
+        }
+        
+        return this.audioEnvironmentDetector.getRoutingRecommendation(options);
+    }
+    
+    /**
+     * Force a specific speech recognition provider
+     * @param {string} provider - 'webspeech' or 'whisper'
+     */
+    setForcedProvider(provider) {
+        if (!['webspeech', 'whisper'].includes(provider)) {
+            console.warn(`Invalid provider: ${provider}. Must be 'webspeech' or 'whisper'`);
+            return;
+        }
+        
+        this.speechRecognitionProvider = provider;
+        console.log(`🔧 Forced speech provider: ${provider}`);
+        
+        if (this.onStatusChange) {
+            this.onStatusChange(`Speech recognition mode: ${provider === 'whisper' ? 'Enhanced (Whisper)' : 'Standard (Web Speech)'}`);
+        }
+    }
+    
+    /**
+     * Enable or disable hybrid speech recognition
+     * @param {boolean} enabled - Whether to enable hybrid mode
+     */
+    setHybridMode(enabled) {
+        this.hybridModeEnabled = enabled;
+        console.log(`🔧 Hybrid speech recognition: ${enabled ? 'enabled' : 'disabled'}`);
+        
+        if (!enabled && this.audioEnvironmentDetector) {
+            this.audioEnvironmentDetector.dispose();
+            this.audioEnvironmentDetector = null;
+            this.speechRecognitionProvider = 'webspeech'; // Fallback to default
+        } else if (enabled && !this.audioEnvironmentDetector && typeof AudioEnvironmentDetector !== 'undefined') {
+            // Re-initialize if needed
+            this.init();
+        }
+    }
+    
+    /**
+     * Enhanced Web Speech API Callback Handlers
+     */
+    
+    /**
+     * Handle enhanced speech recognition results
+     * @param {Array} results - Enhanced results with confidence scores
+     */
+    handleEnhancedSpeechResult(results) {
+        if (!results || results.length === 0) return;
+        
+        // Get the best result (sorted by confidence)
+        const bestResult = results[0];
+        
+        console.log(`🎤 Enhanced Speech Result: "${bestResult.transcript}" (confidence: ${bestResult.confidence.toFixed(2)})`);
+        
+        // Use the enhanced result in the same way as regular speech results
+        // Create a mock event to maintain compatibility with existing code
+        const mockEvent = {
+            results: [{
+                isFinal: bestResult.isFinal,
+                length: 1,
+                0: {
+                    transcript: bestResult.transcript,
+                    confidence: bestResult.confidence
+                }
+            }]
+        };
+        
+        // Route to existing speech result handler
+        this.handleSpeechResult(mockEvent);
+        
+        // Store enhanced metadata for potential use
+        this.lastEnhancedResult = {
+            ...bestResult,
+            allAlternatives: results
+        };
+    }
+    
+    /**
+     * Handle enhanced speech recognition errors
+     * @param {Object} error - Enhanced error object
+     */
+    handleEnhancedSpeechError(error) {
+        console.error(`🚨 Enhanced Speech Error: ${error.type} - ${error.message}`);
+        
+        // If enhanced speech fails, fall back to basic recognition
+        if (!error.recoverable) {
+            console.warn('🔄 Falling back to basic Web Speech API due to unrecoverable error');
+            this.speechRecognitionProvider = 'webspeech';
+            
+            // Restart with basic recognition
+            if (this.recognition && !this.isListening) {
+                setTimeout(() => this.startListening(), 1000);
+            }
+        }
+        
+        // Trigger existing error callback if set
+        if (this.onError) {
+            this.onError(error.message);
+        }
+    }
+    
+    /**
+     * Handle enhanced speech recognition start
+     */
+    handleEnhancedSpeechStart() {
+        this.isListening = true;
+        console.log('🎤 Enhanced speech recognition started');
+        
+        if (this.onStatusChange) {
+            this.onStatusChange('Enhanced speech recognition active...');
+        }
+        
+        if (this.onListeningChange) {
+            this.onListeningChange(true);
+        }
+    }
+    
+    /**
+     * Handle enhanced speech recognition end
+     */
+    handleEnhancedSpeechEnd() {
+        this.isListening = false;
+        console.log('🎤 Enhanced speech recognition ended');
+        
+        if (this.onListeningChange) {
+            this.onListeningChange(false);
+        }
+        
+        // Auto-restart if needed (following same logic as basic recognition)
+        if (!this.isProcessing && !this.processingLock && !this.wakeWordDetected) {
+            setTimeout(() => {
+                if (!this.isProcessing && !this.processingLock && !this.isListening && !this.wakeWordDetected) {
+                    console.log('🔄 Restarting enhanced speech recognition...');
+                    this.startListening();
+                }
+            }, 2000);
+        }
+    }
+    
+    /**
+     * Handle confidence updates from enhanced speech
+     * @param {number} confidence - Current confidence score
+     */
+    handleConfidenceUpdate(confidence) {
+        console.log(`📊 Confidence Update: ${confidence.toFixed(3)}`);
+        
+        // Store confidence for routing decisions
+        this.lastConfidenceScore = confidence;
+        
+        // Optionally update UI with confidence indicator
+        const confidenceEl = document.querySelector('.confidence-indicator');
+        if (confidenceEl) {
+            confidenceEl.textContent = `${(confidence * 100).toFixed(0)}%`;
+            confidenceEl.className = `confidence-indicator ${confidence > 0.8 ? 'high' : confidence > 0.6 ? 'medium' : 'low'}`;
+        }
+    }
+    
+    /**
+     * Handle performance updates from enhanced speech
+     * @param {Object} metrics - Performance metrics
+     */
+    handlePerformanceUpdate(metrics) {
+        console.log(`📈 Performance Update: Latency ${metrics.latency}ms, Success Rate ${(metrics.successRate * 100).toFixed(1)}%`);
+        
+        // Store metrics for analysis
+        this.lastPerformanceMetrics = metrics;
+        
+        // Optionally adjust routing based on performance
+        if (metrics.averageLatency > 3000) { // > 3 seconds
+            console.warn('⚠️ High latency detected, may need to optimize or switch providers');
+        }
+        
+        if (metrics.successRate < 0.8) { // < 80% success rate
+            console.warn('⚠️ Low success rate detected, may need to adjust configuration');
+        }
+    }
+    
+    /**
+     * Override startListening to use enhanced speech when appropriate
+     */
+    startListening() {
+        // Use enhanced speech if available and provider is 'webspeech'
+        if (this.speechRecognitionProvider === 'webspeech' && this.enhancedWebSpeech) {
+            console.log('🚀 Starting enhanced Web Speech API recognition');
+            try {
+                this.enhancedWebSpeech.start();
+                return;
+            } catch (error) {
+                console.warn('Enhanced speech failed to start, falling back to basic:', error);
+                // Fall through to basic recognition
+            }
+        }
+        
+        // Fallback to basic Web Speech API
+        if (!this.isInitialized) {
+            throw new Error('Voice Assistant not initialized');
+        }
+        
+        if (this.isListening) {
+            console.warn('Speech recognition already running - ignoring duplicate start request');
+            return;
+        }
+        
+        if (this.isProcessing || this.processingLock || this.synthesisLock || this.isSpeaking) {
+            console.warn('Cannot start listening - system is busy (processing, synthesis, or speaking)');
+            return;
+        }
+        
+        try {
+            this.recognition.start();
+        } catch (error) {
+            console.error('Failed to start speech recognition:', error);
+            if (this.onError) {
+                this.onError(`Failed to start speech recognition: ${error.message}`);
+            }
+        }
+    }
+    
+    /**
+     * Override stopListening to handle both enhanced and basic speech
+     */
+    stopListening() {
+        console.log('🛑 Stopping speech recognition and clearing state');
+        
+        if (this.enhancedWebSpeech && this.enhancedWebSpeech.getStatus().isListening) {
+            this.enhancedWebSpeech.stop();
+        }
+        
+        if (this.recognition && this.isListening) {
+            this.recognition.stop();
+        }
+        
+        // Clear any command timeouts to prevent interference
+        if (this.commandTimeout) {
+            clearTimeout(this.commandTimeout);
+            this.commandTimeout = null;
+        }
+        
+        this.isListening = false;
+        console.log('🛑 Speech recognition stopped and state cleared');
+    }
+    
+    /**
+     * Centralized state reset to prevent conflicts
+     */
+    resetProcessingState() {
+        console.log('🔄 Resetting all processing state');
+        this.isProcessing = false;
+        this.processingLock = false;
+        this.wakeWordDetected = false;
+        this.isSpeaking = false;
+        this.synthesisLock = false;
+        this.lastTranscript = '';
+        
+        // Clear any pending timeouts
+        if (this.commandTimeout) {
+            clearTimeout(this.commandTimeout);
+            this.commandTimeout = null;
+        }
+        
+        // Restart listening after a brief delay to ensure clean state
+        setTimeout(() => {
+            if (!this.isListening && !this.isProcessing && !this.processingLock) {
+                console.log('🔄 Restarting listening after state reset');
+                this.startListening();
+            }
+        }, 250);
+    }
+    
+    /**
+     * Get enhanced performance metrics if available
+     * @returns {Object} Combined performance metrics
+     */
+    getEnhancedPerformanceMetrics() {
+        const baseMetrics = this.getPerformanceMetrics();
+        
+        if (this.enhancedWebSpeech) {
+            const enhancedMetrics = this.enhancedWebSpeech.getPerformanceMetrics();
+            return {
+                ...baseMetrics,
+                enhanced: enhancedMetrics,
+                provider: this.speechRecognitionProvider,
+                lastConfidence: this.lastConfidenceScore,
+                lastPerformance: this.lastPerformanceMetrics
+            };
+        }
+        
+        return {
+            ...baseMetrics,
+            provider: this.speechRecognitionProvider,
+            enhanced: null
+        };
+    }
+    
+    /**
+     * Whisper API Client Callback Handlers
+     */
+    
+    /**
+     * Handle Whisper transcription results
+     * @param {Object} result - Whisper transcription result
+     */
+    handleWhisperResult(result) {
+        console.log(`🤖 Whisper Result: "${result.text}" (confidence: ${result.confidence.toFixed(2)})`);
+        
+        // Create a mock speech recognition event to maintain compatibility
+        const mockEvent = {
+            results: [{
+                isFinal: true, // Whisper results are always final
+                length: 1,
+                0: {
+                    transcript: result.text,
+                    confidence: result.confidence
+                }
+            }]
+        };
+        
+        // Route to existing speech result handler
+        this.handleSpeechResult(mockEvent);
+        
+        // Store Whisper-specific metadata
+        this.lastWhisperResult = {
+            ...result,
+            provider: 'whisper',
+            timestamp: Date.now()
+        };
+    }
+    
+    /**
+     * Handle Whisper API errors
+     * @param {Object} error - Whisper error object
+     */
+    handleWhisperError(error) {
+        console.error(`🚨 Whisper Error: ${error.error} (type: ${error.type})`);
+        
+        // If Whisper fails, fallback to enhanced Web Speech
+        if (!error.recoverable || error.type === 'cost_limit' || error.type === 'rate_limit') {
+            console.warn('🔄 Falling back to Enhanced Web Speech API due to Whisper failure');
+            this.speechRecognitionProvider = 'webspeech';
+            
+            // Auto-restart with Web Speech if we were actively listening
+            if (this.isListening) {
+                setTimeout(() => {
+                    if (!this.isListening && this.enhancedWebSpeech) {
+                        console.log('🔄 Restarting with Enhanced Web Speech...');
+                        this.startListening();
+                    }
+                }, 1000);
+            }
+        }
+        
+        // Trigger error callback
+        if (this.onError) {
+            this.onError(`Whisper: ${error.error}`);
+        }
+    }
+    
+    /**
+     * Handle Whisper cost updates
+     * @param {Object} costs - Current cost information
+     */
+    handleWhisperCostUpdate(costs) {
+        console.log(`💰 Whisper Costs: Daily $${costs.daily.toFixed(3)}, Monthly $${costs.monthly.toFixed(2)}, Total $${costs.total.toFixed(2)}`);
+        
+        // Store cost info for UI display
+        this.lastWhisperCosts = costs;
+        
+        // Warn if approaching limits
+        if (costs.daily / 5.0 > 0.8) { // 80% of daily limit
+            console.warn('⚠️ Approaching daily cost limit for Whisper API');
+            
+            if (this.onStatusChange) {
+                this.onStatusChange(`Whisper usage: ${(costs.daily / 5.0 * 100).toFixed(0)}% of daily limit`);
+            }
+        }
+    }
+    
+    /**
+     * Handle Whisper rate limit warnings
+     * @param {Object} warning - Rate limit warning
+     */
+    handleWhisperRateLimitWarning(warning) {
+        console.warn(`⚠️ Whisper Rate Limit Warning: ${warning.message}`);
+        
+        // Switch to Web Speech API temporarily
+        const originalProvider = this.speechRecognitionProvider;
+        this.speechRecognitionProvider = 'webspeech';
+        
+        if (this.onStatusChange) {
+            this.onStatusChange('Rate limit reached, using Web Speech API');
+        }
+        
+        // Switch back after delay
+        setTimeout(() => {
+            this.speechRecognitionProvider = originalProvider;
+            if (this.onStatusChange) {
+                this.onStatusChange('Whisper API available again');
+            }
+        }, 60000); // Wait 1 minute
+    }
+    
+    /**
+     * Handle Whisper processing progress
+     * @param {Object} progress - Progress information
+     */
+    handleWhisperProgress(progress) {
+        const percentage = (progress.progress * 100).toFixed(0);
+        console.log(`⏳ Whisper Progress: ${percentage}% (segment ${progress.segmentIndex + 1}/${progress.totalSegments})`);
+        
+        // Update status during long processing
+        if (this.onStatusChange && progress.totalSegments > 1) {
+            this.onStatusChange(`Processing audio... ${percentage}% complete`);
+        }
+    }
+    
+    /**
+     * Enhanced startListening to route to appropriate provider
+     */
+    async startListeningWithHybridRouting() {
+        if (!this.hybridModeEnabled) {
+            // Fallback to standard listening
+            return this.startListening();
+        }
+        
+        // Get environmental routing recommendation
+        const recommendation = this.getProviderRecommendation();
+        this.speechRecognitionProvider = recommendation.provider;
+        
+        console.log(`🎯 Hybrid Routing: Using ${recommendation.provider} (reason: ${recommendation.reason}, confidence: ${recommendation.confidence.toFixed(2)})`);
+        
+        // Route to appropriate provider
+        if (recommendation.provider === 'whisper' && this.whisperClient) {
+            return await this.startWhisperListening();
+        } else {
+            return this.startListening(); // Enhanced Web Speech or fallback
+        }
+    }
+    
+    /**
+     * Start Whisper-based speech recognition
+     */
+    async startWhisperListening() {
+        if (!this.whisperClient) {
+            throw new Error('Whisper client not available');
+        }
+        
+        const status = this.whisperClient.getStatus();
+        if (!status.hasAPIKey) {
+            throw new Error('Whisper API key not configured');
+        }
+        
+        try {
+            console.log('🤖 Starting Whisper speech recognition...');
+            
+            // Start recording audio for Whisper processing
+            this.isListening = true;
+            
+            if (this.onListeningChange) {
+                this.onListeningChange(true);
+            }
+            
+            if (this.onStatusChange) {
+                this.onStatusChange('Recording for Whisper transcription...');
+            }
+            
+            // Start audio recording
+            await this.startAudioRecording();
+            
+        } catch (error) {
+            console.error('Failed to start Whisper listening:', error);
+            
+            // Fallback to Web Speech API
+            console.warn('🔄 Falling back to Web Speech API');
+            this.speechRecognitionProvider = 'webspeech';
+            return this.startListening();
+        }
+    }
+    
+    /**
+     * Start audio recording for Whisper processing
+     */
+    async startAudioRecording() {
+        try {
+            // Get microphone access
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    sampleRate: 16000,
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: false // Let Whisper handle noise
+                }
+            });
+            
+            // Set up MediaRecorder
+            this.mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'audio/webm;codecs=opus'
+            });
+            
+            this.audioChunks = [];
+            
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+            
+            this.mediaRecorder.onstop = async () => {
+                try {
+                    await this.processRecordedAudio();
+                } catch (error) {
+                    console.error('Failed to process recorded audio:', error);
+                    this.handleWhisperError({
+                        error: error.message,
+                        type: 'processing_error',
+                        recoverable: true
+                    });
+                }
+            };
+            
+            // Start recording
+            this.mediaRecorder.start();
+            
+            // Auto-stop after reasonable time (to prevent excessive costs)
+            this.recordingTimeout = setTimeout(() => {
+                if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                    console.log('🛑 Auto-stopping Whisper recording after timeout');
+                    this.stopWhisperListening();
+                }
+            }, 30000); // 30 seconds max
+            
+        } catch (error) {
+            console.error('Failed to start audio recording:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Stop Whisper listening and process audio
+     */
+    async stopWhisperListening() {
+        if (this.recordingTimeout) {
+            clearTimeout(this.recordingTimeout);
+            this.recordingTimeout = null;
+        }
+        
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.stop();
+            
+            // Stop microphone stream
+            const stream = this.mediaRecorder.stream;
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+        
+        this.isListening = false;
+        
+        if (this.onListeningChange) {
+            this.onListeningChange(false);
+        }
+    }
+    
+    /**
+     * Process recorded audio with Whisper
+     */
+    async processRecordedAudio() {
+        if (!this.audioChunks || this.audioChunks.length === 0) {
+            console.warn('No audio data recorded for Whisper processing');
+            return;
+        }
+        
+        // Create audio blob
+        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        this.audioChunks = [];
+        
+        console.log(`🤖 Processing ${(audioBlob.size / 1024).toFixed(1)}KB audio with Whisper...`);
+        
+        if (this.onStatusChange) {
+            this.onStatusChange('Processing with Whisper AI...');
+        }
+        
+        try {
+            // Send to Whisper for transcription
+            await this.whisperClient.transcribe(audioBlob, {
+                language: 'en',
+                prompt: 'Airport operations, flight numbers, gates, equipment, staff names' // Context prompt
+            });
+            
+        } catch (error) {
+            console.error('Whisper transcription failed:', error);
+            this.handleWhisperError({
+                error: error.message,
+                type: 'transcription_failed',
+                recoverable: true
+            });
+        }
+    }
+    
+    /**
+     * Set Whisper API key
+     * @param {string} apiKey - OpenAI API key for Whisper
+     */
+    setWhisperAPIKey(apiKey) {
+        if (this.whisperClient) {
+            this.whisperClient.setAPIKey(apiKey);
+            
+            // Store in localStorage for future use
+            try {
+                localStorage.setItem('openai_api_key', apiKey);
+            } catch (error) {
+                console.warn('Could not store API key in localStorage:', error);
+            }
+            
+            console.log('🔑 Whisper API key configured and stored');
+            
+            if (this.onStatusChange) {
+                this.onStatusChange('Whisper API key configured');
+            }
+        } else {
+            console.warn('Whisper client not available');
+        }
+    }
+    
+    /**
+     * Get Whisper status and metrics
+     * @returns {Object|null} Whisper status or null if not available
+     */
+    getWhisperStatus() {
+        if (!this.whisperClient) return null;
+        
+        return {
+            ...this.whisperClient.getStatus(),
+            performance: this.whisperClient.getPerformanceMetrics(),
+            lastResult: this.lastWhisperResult,
+            lastCosts: this.lastWhisperCosts
+        };
+    }
+    
+    /**
+     * Override stopListening to handle both providers
+     */
+    stopListening() {
+        // Stop Whisper recording if active
+        if (this.speechRecognitionProvider === 'whisper' && this.mediaRecorder) {
+            this.stopWhisperListening();
+        }
+        
+        // Stop Enhanced Web Speech if active
+        if (this.enhancedWebSpeech && this.enhancedWebSpeech.getStatus().isListening) {
+            this.enhancedWebSpeech.stop();
+        }
+        
+        // Stop basic Web Speech if active
+        if (this.recognition && this.isListening) {
+            this.recognition.stop();
+        }
+        
+        this.isListening = false;
+        console.log('🛑 All speech recognition stopped');
+    }
+    
+    /**
+     * Enhanced hybrid mode toggle
+     */
+    setHybridMode(enabled) {
+        this.hybridModeEnabled = enabled;
+        console.log(`🔧 Hybrid speech recognition: ${enabled ? 'enabled' : 'disabled'}`);
+        
+        if (!enabled) {
+            // Dispose hybrid components
+            if (this.audioEnvironmentDetector) {
+                this.audioEnvironmentDetector.dispose();
+                this.audioEnvironmentDetector = null;
+            }
+            
+            if (this.enhancedWebSpeech) {
+                this.enhancedWebSpeech.dispose();
+                this.enhancedWebSpeech = null;
+            }
+            
+            if (this.whisperClient) {
+                this.whisperClient.dispose();
+                this.whisperClient = null;
+            }
+            
+            this.speechRecognitionProvider = 'webspeech'; // Fallback to basic
+        } else if (enabled && !this.audioEnvironmentDetector) {
+            // Re-initialize hybrid components
+            this.init();
+        }
+    }
+    
+    /**
+     * Get OpenAI API key from environment or config
+     * @returns {string|null} API key or null if not found
+     */
+    getOpenAIAPIKey() {
+        // Try multiple sources for the API key
+        
+        // 1. Environment variable (if available in browser context)
+        if (typeof process !== 'undefined' && process.env && process.env.OPENAI_API_KEY) {
+            return process.env.OPENAI_API_KEY;
+        }
+        
+        // 2. Global config object (if set by backend)
+        if (typeof window !== 'undefined' && window.OPENAI_API_KEY) {
+            return window.OPENAI_API_KEY;
+        }
+        
+        // 3. LocalStorage (if previously stored)
+        try {
+            const storedKey = localStorage.getItem('openai_api_key');
+            if (storedKey) {
+                return storedKey;
+            }
+        } catch (error) {
+            // LocalStorage not available
+        }
+        
+        // 4. Check if backend endpoint exists to get key
+        // (In production, keys should never be exposed to frontend)
+        console.log('🔑 No OpenAI API key found - Whisper will need manual configuration');
+        return null;
+    }
+    
+    /**
+     * Get comprehensive hybrid system status
+     * @returns {Object} Complete hybrid system status
+     */
+    getHybridSystemStatus() {
+        return {
+            enabled: this.hybridModeEnabled,
+            currentProvider: this.speechRecognitionProvider,
+            
+            // Component status
+            environment: this.getEnvironmentalStatus(),
+            enhancedWebSpeech: this.enhancedWebSpeech ? this.enhancedWebSpeech.getStatus() : null,
+            whisper: this.getWhisperStatus(),
+            
+            // Performance metrics
+            performance: this.getEnhancedPerformanceMetrics(),
+            
+            // Recent results
+            lastResults: {
+                enhanced: this.lastEnhancedResult || null,
+                whisper: this.lastWhisperResult || null,
+                confidence: this.lastConfidenceScore || null,
+                costs: this.lastWhisperCosts || null
+            }
+        };
     }
 } 
