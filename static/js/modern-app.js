@@ -72,10 +72,8 @@ class ModernJarvisApp {
         this.isInitialized = true;
         console.log('Modern JARVIS UI initialized successfully');
         
-        // Auto-start voice assistant for continuous listening
-        setTimeout(() => {
-            this.startVoiceAssistant();
-        }, 1000); // Wait 1 second for everything to fully initialize
+        // Check if microphone permissions are already granted
+        this.checkMicrophonePermissions();
     }
     
     checkBrowserSupport() {
@@ -92,12 +90,120 @@ class ModernJarvisApp {
         return hasWebSpeech && hasSpeechSynthesis;
     }
     
+    async checkMicrophonePermissions() {
+        console.log('🎤 Checking microphone permissions...');
+        
+        try {
+            // Check if the Permissions API is available
+            if (navigator.permissions && navigator.permissions.query) {
+                const permission = await navigator.permissions.query({ name: 'microphone' });
+                console.log('🎤 Microphone permission status:', permission.state);
+                
+                if (permission.state === 'granted') {
+                    console.log('✅ Microphone access already granted - starting voice assistant');
+                    this.updateStatus('Ready to listen', 'Say "Jarvis" to start');
+                    
+                    // Auto-start since we have permissions
+                    setTimeout(() => {
+                        console.log('🚀 Auto-starting voice assistant (permissions granted)...');
+                        this.startVoiceAssistant();
+                    }, 1500);
+                    
+                } else if (permission.state === 'prompt' || permission.state === 'denied') {
+                    console.log('⚠️ Microphone permission required');
+                    this.updateStatus('Click Start', 'Microphone permission needed');
+                    this.logMessage('system', 'Click the Start button to enable voice listening');
+                    
+                    // Listen for permission changes
+                    permission.addEventListener('change', () => {
+                        console.log('🔄 Permission state changed to:', permission.state);
+                        if (permission.state === 'granted') {
+                            this.logMessage('system', 'Microphone access granted - Voice assistant ready');
+                            this.updateStatus('Ready to listen', 'Say "Jarvis" to start');
+                        }
+                    });
+                }
+            } else {
+                console.log('⚠️ Permissions API not available - requiring manual start');
+                this.updateStatus('Click Start', 'Manual activation required');
+                this.logMessage('system', 'Click the Start button to begin voice listening');
+            }
+        } catch (error) {
+            console.error('Error checking microphone permissions:', error);
+            this.updateStatus('Click Start', 'Manual activation required');
+            this.logMessage('system', 'Click the Start button to begin voice listening');
+        }
+    }
+    
+    enableContinuousListening() {
+        console.log('🔄 Enabling continuous listening mode...');
+        
+        // Mark that continuous listening is active
+        this.continuousListeningActive = true;
+        
+        // Set up monitoring to restart voice assistant if it stops unexpectedly
+        this.setupListeningMonitor();
+        
+        // Store the original onListeningChange callback
+        if (this.voiceAssistant && !this.originalOnListeningChange) {
+            this.originalOnListeningChange = this.voiceAssistant.onListeningChange;
+            
+            // Override to monitor listening state
+            this.voiceAssistant.onListeningChange = (isListening) => {
+                console.log(`🔍 Listening state changed: ${isListening}`);
+                
+                // Call original callback
+                if (this.originalOnListeningChange) {
+                    this.originalOnListeningChange(isListening);
+                }
+                
+                // If listening stopped and continuous mode is active, restart
+                if (!isListening && this.continuousListeningActive && !this.voiceAssistant.isProcessing) {
+                    console.log('🔄 Listening stopped - scheduling restart for continuous mode...');
+                    setTimeout(() => {
+                        if (this.continuousListeningActive && !this.voiceAssistant.isListening && !this.voiceAssistant.isProcessing) {
+                            console.log('🚀 Restarting voice assistant for continuous listening...');
+                            this.startVoiceAssistant();
+                        }
+                    }, 3000); // Wait 3 seconds before restarting
+                }
+            };
+        }
+    }
+    
+    setupListeningMonitor() {
+        // Clear any existing monitor
+        if (this.listeningMonitorInterval) {
+            clearInterval(this.listeningMonitorInterval);
+        }
+        
+        // Check every 10 seconds if we should be listening but aren't
+        this.listeningMonitorInterval = setInterval(() => {
+            if (this.continuousListeningActive && 
+                this.voiceAssistant && 
+                !this.voiceAssistant.isListening && 
+                !this.voiceAssistant.isProcessing &&
+                !this.voiceAssistant.isSpeaking) {
+                
+                console.log('📊 Monitor: Voice assistant should be listening but isn\'t - restarting...');
+                this.startVoiceAssistant();
+            }
+        }, 10000); // Check every 10 seconds
+    }
+    
     initializeVoiceAssistant() {
         this.voiceAssistant = new VoiceAssistant();
         
         // Set up callbacks for the new UI
         this.voiceAssistant.onStatusChange = (status) => {
-            this.updateStatus(status);
+            // Update bubble state based on status for complex queries
+            if (status.includes('Analyzing complex scenario')) {
+                this.updateBubbleState('processing');
+                this.updateStatus(status, 'Please wait...');
+            } else {
+                this.updateStatus(status);
+            }
+            
             // Update hidden element for compatibility
             if (this.elements.status) {
                 this.elements.status.textContent = status;
@@ -134,6 +240,14 @@ class ModernJarvisApp {
             this.handleResponse(response);
         };
         
+        // Log user queries when they're processed
+        this.voiceAssistant.onQueryReceived = (query) => {
+            this.logMessage('user', query.query, {
+                originalTranscript: query.originalTranscript,
+                timestamp: query.timestamp
+            });
+        };
+        
         this.voiceAssistant.onError = (error) => {
             this.showError(error);
         };
@@ -163,6 +277,11 @@ class ModernJarvisApp {
         
         // Set up proactive assistant reference
         this.proactiveAssistant = this.voiceAssistant.proactiveAssistant;
+        
+        // Start heartbeat monitoring to ensure system stays responsive
+        if (this.voiceAssistant.startHeartbeat) {
+            this.voiceAssistant.startHeartbeat();
+        }
     }
     
     initializeWakeWordDetector() {
@@ -332,14 +451,29 @@ class ModernJarvisApp {
         }
         
         try {
-            const success = await this.voiceAssistant.startListening();
+            // Check Whisper status for debugging
+            console.log('🔍 Checking Whisper status...');
+            const whisperStatus = this.voiceAssistant.checkWhisperStatus();
+            console.log('🔍 Whisper Status:', whisperStatus);
+            
+            // First attempt to start with hybrid routing (Whisper primary, Web Speech fallback)
+            let success = await this.voiceAssistant.startListeningWithHybridRouting();
+            
+            // If first attempt fails, try once more after a brief delay
+            if (!success) {
+                this.logMessage('system', 'Initializing speech recognition...');
+                
+                // Wait a bit and try again
+                await new Promise(resolve => setTimeout(resolve, 500));
+                success = await this.voiceAssistant.startListeningWithHybridRouting();
+            }
             
             if (success) {
                 // Update button states
                 if (this.elements.startBtn) this.elements.startBtn.disabled = true;
                 if (this.elements.stopBtn) this.elements.stopBtn.disabled = false;
                 
-                this.updateStatus('Starting...', 'Initializing voice recognition');
+                this.updateStatus('Listening continuously', 'Say "Jarvis" to start');
                 
                 // Start proactive monitoring if available
                 if (this.proactiveAssistant) {
@@ -347,19 +481,38 @@ class ModernJarvisApp {
                     this.logMessage('system', 'Proactive assistance enabled');
                 }
                 
-                this.logMessage('system', 'Voice assistant started - Continuously listening for "Jarvis"');
+                this.logMessage('system', '🎤 Voice assistant active - Continuously listening for "Jarvis"');
+                this.logMessage('system', '💡 The system will automatically restart listening if interrupted');
+                
+                // Enable continuous listening mode
+                this.enableContinuousListening();
+                
             } else {
-                this.showError('Failed to start voice recognition');
+                // More helpful error message instead of scary failure
+                this.logMessage('system', '⚠️ Voice activation failed - This is usually due to microphone permissions');
+                this.logMessage('system', '👆 Click the Start button to grant microphone access and try again');
+                this.updateStatus('Click Start', 'Microphone permission needed');
             }
             
         } catch (error) {
             console.error('Failed to start voice assistant:', error);
-            this.showError('Failed to start voice assistant: ' + error.message);
+            
+            // Check if it's a permissions issue
+            if (error.message && error.message.includes('Permission')) {
+                this.logMessage('system', 'Microphone permission needed - Please allow microphone access and try again');
+                this.updateStatus('Permission Required', 'Allow microphone access');
+            } else {
+                this.logMessage('system', `Voice assistant startup issue: ${error.message}`);
+                this.updateStatus('Click Start', 'Manual activation required');
+            }
         }
     }
     
     stopVoiceAssistant() {
         if (!this.voiceAssistant) return;
+        
+        // Disable continuous listening first
+        this.disableContinuousListening();
         
         this.voiceAssistant.stopListening();
         
@@ -375,7 +528,26 @@ class ModernJarvisApp {
         this.updateBubbleState('idle');
         this.updateStatus('Stopped', 'Voice assistant is inactive');
         
-        this.logMessage('system', 'Voice assistant stopped');
+        this.logMessage('system', '🛑 Voice assistant stopped - Continuous listening disabled');
+    }
+    
+    disableContinuousListening() {
+        console.log('🛑 Disabling continuous listening mode...');
+        
+        // Mark that continuous listening is inactive
+        this.continuousListeningActive = false;
+        
+        // Clear the monitoring interval
+        if (this.listeningMonitorInterval) {
+            clearInterval(this.listeningMonitorInterval);
+            this.listeningMonitorInterval = null;
+        }
+        
+        // Restore original callback if we overrode it
+        if (this.voiceAssistant && this.originalOnListeningChange) {
+            this.voiceAssistant.onListeningChange = this.originalOnListeningChange;
+            this.originalOnListeningChange = null;
+        }
     }
     
     handleResponse(response) {
@@ -390,8 +562,32 @@ class ModernJarvisApp {
             }
         }, 1000);
         
-        // Log the conversation
-        this.logMessage('assistant', response.answer || response.message || 'Response received');
+        // Create enhanced log message for the assistant response
+        const responseText = response.response || response.answer || response.message || 'Response received';
+        let logMessage = responseText;
+        
+        // Add confidence and latency info if available
+        const details = [];
+        if (response.confidence !== undefined) {
+            details.push(`Confidence: ${(response.confidence * 100).toFixed(1)}%`);
+        }
+        if (response.latency !== undefined) {
+            details.push(`Response time: ${response.latency.toFixed(2)}s`);
+        }
+        
+        if (details.length > 0) {
+            logMessage += ` (${details.join(', ')})`;
+        }
+        
+        // Log the conversation with metadata
+        this.logMessage('assistant', logMessage, {
+            originalResponse: responseText,
+            confidence: response.confidence,
+            latency: response.latency,
+            timestamp: response.timestamp,
+            query: response.query,
+            originalTranscript: response.originalTranscript
+        });
         
         // Update response time if available
         if (response.latency && this.elements.responseTime) {
@@ -405,20 +601,46 @@ class ModernJarvisApp {
         const logEntry = document.createElement('div');
         logEntry.className = `log-entry ${type}`;
         
-        // Create header with timestamp
+        // Create header with timestamp and type indicator
         const header = document.createElement('div');
         header.className = 'log-entry-header';
+        
+        // Add type indicator (emoji/icon)
+        const typeIndicator = document.createElement('span');
+        typeIndicator.className = 'type-indicator';
+        if (type === 'user') {
+            typeIndicator.textContent = '👤 You: ';
+            typeIndicator.style.color = '#4CAF50';
+        } else if (type === 'assistant') {
+            typeIndicator.textContent = '🤖 JARVIS: ';
+            typeIndicator.style.color = '#2196F3';
+        } else if (type === 'system') {
+            typeIndicator.textContent = '⚙️ System: ';
+            typeIndicator.style.color = '#FF9800';
+        }
         
         const timestamp = document.createElement('span');
         timestamp.className = 'timestamp';
         timestamp.textContent = new Date().toLocaleTimeString();
         
+        header.appendChild(typeIndicator);
         header.appendChild(timestamp);
         
         // Create message element
         const messageElement = document.createElement('div');
         messageElement.className = 'message';
         messageElement.textContent = message;
+        
+        // Add original transcript for user messages if available
+        if (type === 'user' && metadata.originalTranscript && metadata.originalTranscript !== message) {
+            const originalElement = document.createElement('div');
+            originalElement.className = 'original-transcript';
+            originalElement.style.fontSize = '0.9em';
+            originalElement.style.color = '#666';
+            originalElement.style.fontStyle = 'italic';
+            originalElement.textContent = `(Original: "${metadata.originalTranscript}")`;
+            messageElement.appendChild(originalElement);
+        }
         
         logEntry.appendChild(header);
         logEntry.appendChild(messageElement);

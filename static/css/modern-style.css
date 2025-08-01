@@ -762,6 +762,20 @@ body {
   margin-bottom: var(--spacing-xs);
 }
 
+.type-indicator {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  margin-right: var(--spacing-sm);
+}
+
+.original-transcript {
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid rgba(255, 255, 255, 0.2);
+}
+
 .timestamp {
   font-size: var(--font-size-xs);
   font-weight: 700;

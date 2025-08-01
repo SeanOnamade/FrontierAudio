@@ -114,12 +114,17 @@ class AirportVoiceAssistant:
                     'examples': [
                         # SPECIFICATION TEST CASES (Critical for 100% compliance)
                         '"What is the status of flight UA2406?" -> SELECT * FROM flights WHERE flight_number = \'UA2406\';',
+                        '"What is the status of flight UA406?" -> SELECT * FROM flights WHERE flight_number LIKE \'%UA406%\';',
+                        '"Status of flight 406" -> SELECT * FROM flights WHERE flight_number LIKE \'%406%\';',
                         '"What pushback tractor is assigned to flight UA2406?" -> SELECT * FROM equipment WHERE assigned_flight = \'UA2406\' AND equipment_type = \'Pushback Tractor\';',
                         '"Who is the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
                         '"Who was the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
                         '"Who is the cleaning lead and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
                         '"When does Maria Rodriguez shift end?" -> SELECT shift_end FROM employees WHERE first_name = \'Maria\' AND last_name = \'Rodriguez\';',
                         '"What is the nearest pushback tractor to gate A8?" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND status = \'Available\' ORDER BY current_location;',
+                        '"Find available pushback tractors near gate A12" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND status = \'Available\';',
+                        '"Which pushback tractors are not assigned?" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND assigned_flight IS NULL;',
+                        '"What equipment is assigned to UA2406?" -> SELECT * FROM equipment WHERE assigned_flight = \'UA2406\';',
                         '"What ramp team members are on break now?" -> SELECT * FROM employees WHERE department = \'Ramp\' AND status = \'Break\';',
                         '"What is John Smith next flight assignment?" -> SELECT a.flight_number, a.assignment_type, a.start_time, a.end_time, a.status, f.departure_gate FROM assignments a JOIN flights f ON a.flight_number = f.flight_number JOIN employees e ON a.employee_id = e.employee_id WHERE e.first_name = \'John\' AND e.last_name = \'Smith\' AND a.status = \'Scheduled\' ORDER BY a.start_time LIMIT 1;',
                         '"What is John Smith assignment?" -> SELECT a.flight_number, a.assignment_type, a.start_time, a.end_time, a.status FROM assignments a JOIN employees e ON a.employee_id = e.employee_id WHERE e.first_name = \'John\' AND e.last_name = \'Smith\';',
@@ -164,12 +169,20 @@ class AirportVoiceAssistant:
             
             Use simple SQLite syntax:
             - Use LIKE for status queries (case insensitive): status LIKE '%delay%', status LIKE '%board%'
-            - Use = for exact matches: flight_number = 'UA2406'
+            - For flight numbers: Try exact match first, then LIKE pattern if needed
+              * Exact: flight_number = 'UA2406'
+              * Pattern: flight_number LIKE '%UA406%' (for partial matches from speech recognition)
+              * Always prefer exact matches when the full flight number is clear
             - Use || for concatenation: first_name || ' ' || last_name
             - Always use LIKE when searching for status, department, or descriptive fields
             - For operational questions about "today", "now", or "current", focus on STATUS rather than dates
             - When users ask about delayed/on-time flights "today", they want current operational status regardless of schedule date
             - Avoid date filters unless specifically asking for flights on a particular date
+            
+            FLIGHT NUMBER MATCHING STRATEGY:
+            - If user says "UA406" but no exact match exists, try "flight_number LIKE '%UA406%'"
+            - If user says partial number like "406", try "flight_number LIKE '%406%'"
+            - This handles speech recognition errors where "UA2406" becomes "UA406"
             
             Database Schema:
             {schema_text}
@@ -185,7 +198,7 @@ class AirportVoiceAssistant:
             SQL Query:"""
             
             response = openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200,
                 temperature=0.1
@@ -287,7 +300,7 @@ Make the response natural for voice output but don't omit important details. Use
             """
             
             response = openai_client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=300,
                 temperature=0.3
@@ -314,9 +327,261 @@ Make the response natural for voice output but don't omit important details. Use
             return 'fr'
         return 'en'
     
+    def preprocess_speech_query(self, user_query):
+        """Clean up common speech recognition errors in queries"""
+        # Remove wake words at the beginning
+        wake_word_patterns = ['jarvis', 'hey jarvis', 'jaime', 'hola jaime', 'oye jaime', 'jacques', 'salut jacques', 'hey jacques']
+        query_lower = user_query.lower().strip()
+        
+        for wake_word in wake_word_patterns:
+            if query_lower.startswith(wake_word):
+                user_query = user_query[len(wake_word):].strip()
+                break
+        
+        # Fix common flight number speech recognition errors
+        # "UA to 406" -> "UA406", "United to 406" -> "UA406"
+        flight_patterns = [
+            (r'\b(UA|United|united)\s+to\s+(\d+)', r'UA\2'),  # "UA to 406" -> "UA406"
+            (r'\b(UA|United|united)\s+(\d+)', r'UA\2'),       # "UA 406" -> "UA406"
+            (r'\bflight\s+(UA|United|united)\s+to\s+(\d+)', r'flight UA\2'),  # "flight UA to 406" -> "flight UA406"
+            (r'\bflight\s+(UA|United|united)\s+(\d+)', r'flight UA\2'),       # "flight UA 406" -> "flight UA406"
+        ]
+        
+        # Apply flight number fixes
+        for pattern, replacement in flight_patterns:
+            user_query = re.sub(pattern, replacement, user_query, flags=re.IGNORECASE)
+        
+        # Common word corrections for airport operations
+        corrections = [
+            ('pushback tractor', 'pushback tractor'),
+            ('cleaning lead', 'cleaning lead'),
+            ('what is', 'what is'),
+            ('when does', 'when does'),
+            ('who is', 'who is'),
+            ('where is', 'where is'),
+        ]
+        
+        # Apply corrections (case insensitive)
+        for wrong, correct in corrections:
+            user_query = re.sub(re.escape(wrong), correct, user_query, flags=re.IGNORECASE)
+            
+        # Log the preprocessing for debugging
+        logger.info(f"🔧 PREPROCESSED QUERY: '{user_query.strip()}'")
+        
+        return user_query.strip()
+    
+    def is_complex_query(self, user_query):
+        """Detect if this is a complex multi-step query that requires advanced reasoning"""
+        complex_indicators = [
+            # Scenario-based queries
+            'broke down', 'broken', 'failed', 'out of service', 'unavailable',
+            'next closest', 'nearest available', 'alternative', 'backup',
+            'if', 'what if', 'suppose', 'assuming',
+            # Multi-step reasoning
+            'then what', 'what happens', 'where else', 'what other',
+            'reassign', 'reallocate', 'move to', 'switch to',
+            # Proximity/location reasoning  
+            'closest', 'nearest', 'next available', 'furthest',
+            'best option', 'optimal', 'recommend'
+        ]
+        
+        query_lower = user_query.lower()
+        return any(indicator in query_lower for indicator in complex_indicators)
+    
+    def process_complex_query(self, user_query, schema, language='en'):
+        """Handle complex multi-step queries requiring advanced reasoning"""
+        try:
+            schema_text = "\n".join([f"Table: {table}, Columns: {', '.join(columns)}" 
+                                   for table, columns in schema.items()])
+            
+            prompt = f"""
+            You are an advanced airport operations AI that can handle complex, multi-step queries.
+            
+            TASK: Analyze this complex query and break it down into logical steps, then provide a comprehensive response.
+            
+                         Available Database Schema:
+             {schema_text}
+             
+             IMPORTANT SCHEMA NOTES:
+             - Equipment assignments are tracked via 'assigned_flight' column in equipment table
+             - No separate assignments table exists
+             - Use equipment.assigned_flight to find what's assigned to which flight
+             - Use equipment.status for availability ('Available', 'Assigned', 'Maintenance', etc.)
+             - Use equipment.current_location for proximity calculations
+            
+            COMPLEX QUERY HANDLING INSTRUCTIONS:
+            1. Break down the query into logical steps
+            2. Identify what information needs to be gathered
+            3. Determine the sequence of operations
+            4. Consider operational constraints and proximity
+            5. Provide actionable recommendations
+            
+                         EXAMPLE COMPLEX SCENARIOS:
+             
+             "Pushback tractor broke down for UA2406, where is the next closest one?"
+             Analysis:
+             1. Find current pushback tractor for UA2406: SELECT * FROM equipment WHERE assigned_flight = 'UA2406' AND equipment_type = 'Pushback Tractor';
+             2. Find all available pushback tractors: SELECT * FROM equipment WHERE equipment_type = 'Pushback Tractor' AND status = 'Available';
+             3. Get UA2406's gate: SELECT departure_gate FROM flights WHERE flight_number = 'UA2406';
+             4. Recommend the closest available option based on gate proximity
+             5. Consider operational impact and reassignment
+            
+            "If gate A12 becomes unavailable, what's the best alternative for UA2406?"
+            Analysis:
+            1. Find UA2406's current gate (A12)
+            2. Find available gates 
+            3. Consider aircraft type compatibility
+            4. Assess proximity to minimize passenger disruption
+            5. Check equipment reassignment needs
+            
+            OPERATIONAL KNOWLEDGE:
+            - Gates in same terminal are closer than different terminals
+            - Equipment proximity matters for operational efficiency
+            - Aircraft type affects gate compatibility
+            - Available status means ready for immediate use
+            - Consider crew schedules and passenger impact
+            
+            Current Query: "{user_query}"
+            
+            Provide a detailed analysis following this format:
+            1. SITUATION ANALYSIS: What's happening?
+            2. INFORMATION NEEDED: What data to gather?
+            3. STEP-BY-STEP PROCESS: How to solve it?
+            4. RECOMMENDATIONS: What actions to take?
+            5. SQL QUERIES: What queries to run? (provide multiple if needed)
+            
+            Focus on practical, actionable airport operations advice.
+            """
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=800,
+                temperature=0.2
+            )
+            
+            analysis = response.choices[0].message.content.strip()
+            
+            # Extract SQL queries from the analysis
+            sql_queries = []
+            lines = analysis.split('\n')
+            in_sql_section = False
+            
+            for line in lines:
+                if 'SQL QUERIES:' in line.upper() or 'SQL QUERY:' in line.upper():
+                    in_sql_section = True
+                    continue
+                    
+                if in_sql_section and 'SELECT' in line.upper():
+                    # Extract the SQL query
+                    sql_start = line.upper().find('SELECT')
+                    if sql_start != -1:
+                        sql_query = line[sql_start:].strip()
+                        # Clean up common formatting
+                        sql_query = sql_query.replace('```sql', '').replace('```', '').strip()
+                        if sql_query.endswith('.'):
+                            sql_query = sql_query[:-1]
+                        sql_queries.append(sql_query)
+            
+            # Execute the queries and gather results
+            all_results = []
+            for sql_query in sql_queries[:3]:  # Limit to 3 queries for performance
+                try:
+                    logger.info(f"🔍 COMPLEX QUERY SQL: {sql_query}")
+                    results = self.execute_query(sql_query)
+                    if results:
+                        all_results.extend(results)
+                        logger.info(f"📊 COMPLEX QUERY RESULTS: Found {len(results)} rows")
+                except Exception as e:
+                    logger.error(f"Complex query SQL error: {e}")
+                    continue
+            
+            # Combine analysis with data
+            if all_results:
+                # Format the final response
+                final_response = self.format_complex_response(analysis, all_results, user_query, language)
+                return {
+                    "response": final_response,
+                    "confidence": 0.85,
+                    "analysis": analysis,
+                    "data_points": len(all_results),
+                    "query_type": "complex"
+                }
+            else:
+                # Even without specific data, provide a formatted response
+                formatted_response = self.format_complex_response(analysis, [], user_query, language)
+                return {
+                    "response": formatted_response,
+                    "confidence": 0.65,
+                    "analysis": analysis,
+                    "data_points": 0,
+                    "query_type": "complex"
+                }
+                
+        except Exception as e:
+            logger.error(f"Complex query processing error: {e}")
+            return None
+    
+    def format_complex_response(self, analysis, data_results, original_query, language='en'):
+        """Format a comprehensive response for complex queries"""
+        try:
+            # Summarize the data for context
+            data_summary = []
+            if data_results:
+                # Group data by type
+                flights = [r for r in data_results if 'flight_number' in r]
+                equipment = [r for r in data_results if 'equipment_type' in r]
+                gates = [r for r in data_results if 'gate_number' in r]
+                
+                if flights:
+                    data_summary.append(f"Flights found: {len(flights)}")
+                if equipment:
+                    available_equipment = [e for e in equipment if e.get('status', '').lower() in ['available', 'ready']]
+                    data_summary.append(f"Equipment available: {len(available_equipment)}/{len(equipment)}")
+                if gates:
+                    data_summary.append(f"Gates analyzed: {len(gates)}")
+            
+            # Create a focused response prompt
+            prompt = f"""
+            Based on this complex airport operations analysis and real data, provide a clear, actionable response.
+            
+            Original Question: "{original_query}"
+            
+            Analysis Performed:
+            {analysis}
+            
+            Real Data Summary: {'; '.join(data_summary) if data_summary else 'No specific data retrieved'}
+            
+            Data Details: {str(data_results[:5]) if data_results else 'No data available'}
+            
+            Provide a concise, practical response that:
+            1. Directly answers the original question
+            2. Gives specific recommendations based on the data
+            3. Mentions any important operational considerations
+            4. Uses clear, professional language suitable for airport operations
+            
+            Keep the response focused and actionable - airport operations staff need quick, clear guidance.
+            """
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=400,
+                temperature=0.3
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            logger.error(f"Complex response formatting error: {e}")
+            return "I've analyzed your complex query but had trouble formatting the final response. Please try rephrasing your question."
+
     def process_query(self, user_query, language=None, session_id=None, context_data=None):
         """Main processing pipeline with conversation context support"""
         start_time = time.time()
+        
+        # Preprocess speech recognition errors
+        user_query = self.preprocess_speech_query(user_query)
         
         # Auto-detect language if not provided
         if language is None:
@@ -358,7 +623,20 @@ Make the response natural for voice output but don't omit important details. Use
                 "language": language
             }
         
-        # Convert to SQL with context
+        # Check if this is a complex query requiring multi-step reasoning
+        if self.is_complex_query(user_query):
+            logger.info(f"🧠 COMPLEX QUERY DETECTED: {user_query}")
+            complex_result = self.process_complex_query(user_query, schema, language)
+            
+            if complex_result:
+                complex_result["latency"] = time.time() - start_time
+                complex_result["language"] = language
+                return complex_result
+            else:
+                # Fall back to simple processing if complex processing fails
+                logger.warning("Complex query processing failed, falling back to simple processing")
+        
+        # Convert to SQL with context (simple processing)
         sql_query = self.parse_query_to_sql(user_query, schema, language, context_prompt)
         if not sql_query:
             return {
@@ -392,7 +670,8 @@ Make the response natural for voice output but don't omit important details. Use
             "latency": time.time() - start_time,
             "sql_query": sql_query,
             "result_count": len(results) if results else 0,
-            "language": language
+            "language": language,
+            "query_type": "simple"
         }
     
     def build_context_prompt(self, context_data):
@@ -635,7 +914,7 @@ def improve_transcription():
         """
         
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=100,
             temperature=0.1

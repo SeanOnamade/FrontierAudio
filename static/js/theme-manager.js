@@ -113,15 +113,24 @@ class ThemeManager {
         }
     }
 
-    setTheme(theme) {
-        this.currentTheme = theme;
-        document.documentElement.setAttribute('data-theme', theme);
+    applyTheme() {
+        // Apply the current theme to the document
+        document.documentElement.setAttribute('data-theme', this.currentTheme);
         
-        // Update active button
-        document.querySelectorAll('.theme-toggle[data-theme]').forEach(btn => {
+        // Update active button if theme controls exist
+        const themeButtons = document.querySelectorAll('.theme-toggle[data-theme]');
+        themeButtons.forEach(btn => {
             btn.classList.remove('active');
         });
-        document.querySelector(`[data-theme="${theme}"]`).classList.add('active');
+        const activeButton = document.querySelector(`[data-theme="${this.currentTheme}"]`);
+        if (activeButton) {
+            activeButton.classList.add('active');
+        }
+    }
+
+    setTheme(theme) {
+        this.currentTheme = theme;
+        this.applyTheme();
 
         // Save preference
         this.userPreferences.theme = theme;

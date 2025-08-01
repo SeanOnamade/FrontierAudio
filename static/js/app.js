@@ -597,13 +597,13 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('✅ This query should be FAST (no LLM correction)');
             console.log('');
             console.log('📊 LATENCY BREAKDOWN (from backend logs):');
-            console.log('  🤖 GPT-3.5-turbo SQL generation: ~0.5-1.5s');
-            console.log('  🤖 GPT-3.5-turbo response formatting: ~0.5-1.5s');
+            console.log('  🤖 GPT-4o-mini SQL generation: ~0.3-1.0s');
+            console.log('  🤖 GPT-4o-mini response formatting: ~0.3-1.0s');
             console.log('  🗃️ Database query: ~10ms');
             console.log('  📡 Network overhead: ~100ms');
-            console.log('  ⚖️ Total expected: ~1.1-3.1s');
+            console.log('  ⚖️ Total expected: ~0.7-2.1s');
             console.log('');
-            console.log('🎯 CONCLUSION: 2-3s latency expected with GPT-3.5-turbo!');
+            console.log('🎯 CONCLUSION: 1.5-2.5s latency expected with GPT-4o-mini!');
             console.log('   ✅ No LLM correction happening (saving ~1s)');
             console.log('   ✅ System optimized for <3s target latency');
             console.log('   ⚡ The "fast" path saved us from 5-6s total latency');
