@@ -11,8 +11,9 @@ class VoiceAssistant {
         this.commandTimeout = null; // Timer for processing commands
         this.processingLock = false; // Prevent multiple processing attempts
         this.lastWakeWordTime = 0; // Timestamp of last wake word detection
-        this.globalCooldown = 500; // 0.5 second cooldown between wake words
+        this.globalCooldown = 200; // Reduced from 500ms to 200ms for faster response
         this.microphoneTested = false; // Track if microphone has been tested
+        this.heartbeatInterval = null; // Periodic check to ensure system stays responsive
         
         // Enhanced features
         this.languageManager = null;
@@ -85,6 +86,7 @@ class VoiceAssistant {
         this.onLanguageDetected = null;
         this.onUserAuthenticated = null;
         this.onStressDetected = null;
+        this.onQueryReceived = null;
         
         this.init();
     }
@@ -203,11 +205,11 @@ class VoiceAssistant {
                 };
                 
                 this.enhancedWebSpeech.onStart = () => {
-                    this.handleEnhancedSpeechStart();
+                    this.onEnhancedSpeechStart();
                 };
                 
                 this.enhancedWebSpeech.onEnd = () => {
-                    this.handleEnhancedSpeechEnd();
+                    this.onEnhancedSpeechEnd();
                 };
                 
                 this.enhancedWebSpeech.onConfidenceUpdate = (confidence) => {
@@ -377,6 +379,10 @@ class VoiceAssistant {
         
         // Set up event handlers
         this.setupEventHandlers();
+        
+        // Mark as initialized
+        this.isInitialized = true;
+        console.log('✅ Voice Assistant fully initialized');
     }
     
     setupEventHandlers() {
@@ -460,6 +466,9 @@ class VoiceAssistant {
         const now = Date.now();
         const timeSinceLastWakeWord = now - this.lastWakeWordTime;
         
+        // Debug: Show current mode
+        console.log(`🔍 Transcript received: "${transcript}" | Mode: ${this.wakeWordDetected ? 'COMMAND_LISTENING' : 'WAKE_WORD_DETECTION'} | Final: ${isFinal}`);
+        
         // Allow wake word detection on both interim and final results for faster response
         if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && !this.isSpeaking &&
             timeSinceLastWakeWord > this.globalCooldown) {
@@ -467,14 +476,15 @@ class VoiceAssistant {
             
             console.log(`🔍 Checking wake word in result: "${transcript}"`);
             
-                    // Check for wake word with minimal text length for faster detection
-        if (transcript.length > 2) {
-            // INSTANT wake word check for common variations
-            const quickCheck = transcript.toLowerCase().trim();
-            if (quickCheck === 'jarvis' || quickCheck.endsWith('jarvis') || quickCheck.includes('jarvis')) {
-                console.log('🚀 INSTANT wake word detected!');
-                wakeWordDetected = true;
-            }
+            // Check for wake word with minimal text length for faster detection
+            if (transcript.length > 1) { // Reduced from 2 to 1 for even faster detection
+                // INSTANT wake word check for common variations
+                const quickCheck = transcript.toLowerCase().trim();
+                if (quickCheck === 'jarvis' || quickCheck.endsWith('jarvis') || quickCheck.includes('jarvis')) {
+                    console.log('🚀 INSTANT wake word detected!');
+                    wakeWordDetected = true;
+                }
+                
                 if (!wakeWordDetected && this.enhancedWakeWordDetector) {
                     console.log('Using enhanced wake word detector...');
                     const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
@@ -483,7 +493,7 @@ class VoiceAssistant {
                     if (wakeWordDetected) {
                         console.log('✅ Enhanced wake word detected!', wakeWordResult);
                     }
-                } else {
+                } else if (!wakeWordDetected) {
                     console.log('Using simple wake word detection...');
                     // Fallback to simple wake word detection
                     wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
@@ -525,7 +535,7 @@ class VoiceAssistant {
                 }
                 
                 // Auto-reset wake word after 15 seconds if no command is given and no recent activity
-                setTimeout(() => {
+                this.commandTimeout = setTimeout(() => {
                     if (this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
                         (!this.lastTranscript || this.lastTranscript.length < 5)) {
                         console.log('🔄 Auto-resetting wake word detection after timeout (no meaningful input)');
@@ -537,6 +547,12 @@ class VoiceAssistant {
                         }
                         if (this.onStatusChange) {
                             this.onStatusChange('Ready - Say "Jarvis" to begin');
+                        }
+                        
+                        // Update modern UI back to idle
+                        if (window.modernJarvis) {
+                            window.modernJarvis.updateBubbleState('idle');
+                            window.modernJarvis.updateStatus('Ready', 'Say "Jarvis" to begin');
                         }
                     }
                 }, 15000); // Increased to 15 seconds
@@ -724,6 +740,15 @@ class VoiceAssistant {
         this.wakeWordDetected = false;
         this.lastCommandTime = now;
         
+        // Log the user's query for conversation tracking
+        if (this.onQueryReceived) {
+            this.onQueryReceived({
+                query: command,
+                timestamp: new Date().toLocaleTimeString(),
+                originalTranscript: command
+            });
+        }
+        
         // Stop speech recognition during processing to prevent interference
         if (this.recognition && this.isListening) {
             console.log('🛑 Stopping speech recognition during command processing');
@@ -743,7 +768,7 @@ class VoiceAssistant {
         // If command is empty after normalization, reset and return
         if (!command || command.trim().length === 0) {
             console.log('🚫 Command empty after normalization - resetting state');
-            this.resetProcessingState();
+            await this.resetProcessingState(); // Use default (true) - should restart listening
             return;
         }
         
@@ -794,6 +819,15 @@ class VoiceAssistant {
                 }
             }
             
+            // Check if this is a complex query
+            const isComplexQuery = this.isComplexQuery(command);
+            if (isComplexQuery) {
+                console.log('🧠 Complex query detected, updating UI for processing');
+                if (this.onStatusChange) {
+                    this.onStatusChange('🔍 Analyzing complex scenario... (10-15 seconds)');
+                }
+            }
+            
             // Get conversation context if available
             const contextData = this.conversationMemory ? this.conversationMemory.getContextForQuery(command) : null;
             
@@ -806,7 +840,16 @@ class VoiceAssistant {
             
             if (response && response.response) {
                 console.log('✅ Speaking response:', response.response.substring(0, 100) + '...');
-                this.speak(response.response);
+                
+                // Handle long responses differently (complex queries often generate long responses)
+                if (response.query_type === 'complex' && response.response.length > 300) {
+                    console.log('📝 Complex query response - using summary for TTS');
+                    // For complex queries, extract a summary for speaking
+                    const summary = this.extractSummaryForSpeech(response.response);
+                    this.speak(summary);
+                } else {
+                    this.speak(response.response);
+                }
                 
                 if (this.onResponseReceived) {
                     this.onResponseReceived({
@@ -872,6 +915,81 @@ class VoiceAssistant {
         });
         
         return cleaned.trim();
+    }
+    
+    isComplexQuery(query) {
+        /**
+         * Detect if this is a complex multi-step query that requires advanced reasoning
+         * This matches the logic in the backend (app.py)
+         */
+        const complexIndicators = [
+            // Scenario-based queries
+            'broke down', 'broken', 'failed', 'out of service', 'unavailable',
+            'next closest', 'nearest available', 'alternative', 'backup',
+            'if', 'what if', 'suppose', 'assuming',
+            // Multi-step reasoning
+            'then what', 'what happens', 'where else', 'what other',
+            'reassign', 'reallocate', 'move to', 'switch to',
+            // Proximity/location reasoning  
+            'closest', 'nearest', 'next available', 'furthest',
+            'best option', 'optimal', 'recommend'
+        ];
+        
+        const queryLower = query.toLowerCase();
+        return complexIndicators.some(indicator => queryLower.includes(indicator));
+    }
+    
+    extractSummaryForSpeech(longResponse) {
+        /**
+         * Extract a concise summary from a long complex query response for TTS
+         */
+        try {
+            // Look for the main recommendation or answer
+            const lines = longResponse.split('\n');
+            let summary = '';
+            
+            // Find key recommendation lines
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine.includes('recommend') || 
+                    trimmedLine.includes('suggest') ||
+                    trimmedLine.includes('closest') ||
+                    trimmedLine.includes('available') ||
+                    trimmedLine.includes('assign')) {
+                    summary = trimmedLine;
+                    break;
+                }
+            }
+            
+            // If no specific recommendation found, use first substantial sentence
+            if (!summary) {
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.length > 50 && !trimmedLine.startsWith('#') && !trimmedLine.includes('ANALYSIS')) {
+                        summary = trimmedLine;
+                        break;
+                    }
+                }
+            }
+            
+            // Fall back to first 200 characters if nothing found
+            if (!summary) {
+                summary = longResponse.substring(0, 200).replace(/[#*]/g, '').trim();
+            }
+            
+            // Clean up formatting
+            summary = summary.replace(/[#*]/g, '').replace(/\s+/g, ' ').trim();
+            
+            // Ensure it ends properly
+            if (!summary.endsWith('.') && !summary.endsWith('!') && !summary.endsWith('?')) {
+                summary += '.';
+            }
+            
+            return summary;
+        } catch (error) {
+            console.error('Error extracting summary:', error);
+            return 'I\'ve analyzed your request and provided detailed information in the conversation log.';
+        }
     }
     
     async sendToBackend(query, contextPrompt = '', contextData = null) {
@@ -993,23 +1111,26 @@ class VoiceAssistant {
             }
             
             // Force a clean restart after synthesis is complete
-            setTimeout(() => {
+            setTimeout(async () => {
                 if (!this.isProcessing && !this.processingLock && !this.synthesisLock) {
                     console.log('🔄 Force restarting speech recognition after synthesis completed');
                     
-                    // Force reset Enhanced Web Speech API state first
-                    if (this.enhancedWebSpeech) {
-                        this.enhancedWebSpeech.reset();
-                    }
-                    
-                    // Force stop all recognition
+                    // Force stop all recognition first
                     this.stopListening();
                     
-                    // Reset all state variables
+                    // Reset all state variables (without auto-restart to avoid conflicts)
                     this.isListening = false;
                     this.lastTranscript = '';
                     this.wakeWordDetected = false;
-                    this.resetProcessingState();
+                    this.lastWakeWordTime = 0; // Reset cooldown timer for immediate responsiveness
+                    
+                    // Clear the auto-reset timeout from wake word detection
+                    if (this.commandTimeout) {
+                        clearTimeout(this.commandTimeout);
+                        this.commandTimeout = null;
+                    }
+                    
+                    await this.resetProcessingState(false); // Don't auto-restart listening
                     
                     // Clear any timeouts
                     if (this.commandTimeout) {
@@ -1017,17 +1138,59 @@ class VoiceAssistant {
                         this.commandTimeout = null;
                     }
                     
-                    // Start fresh with longer delay
+                    // Single clean reset and restart
+                    if (this.enhancedWebSpeech) {
+                        try {
+                            await this.enhancedWebSpeech.reset();
+                            console.log('✅ Enhanced speech reset complete, starting fresh recognition');
+                        } catch (error) {
+                            console.warn('Error during enhanced speech reset:', error);
+                        }
+                    }
+                    
+                    // Start fresh immediately for instant responsiveness
                     setTimeout(() => {
-                        console.log('🚀 Starting fresh recognition');
+                        console.log('🚀 Starting fresh recognition after clean reset');
+                        console.log(`📊 Reset state: wakeWordDetected=${this.wakeWordDetected}, processing=${this.isProcessing}`);
+                        
+                        // Update UI to show we're back to listening for wake word
+                        const wakeWord = this.languageManager ? 
+                            this.languageManager.getWakeWords()[0] : 'Jarvis';
+                        const readyMessage = this.languageManager ? 
+                            this.languageManager.translate('ready', { wake_word: wakeWord }) : 
+                            `Ready - Say "${wakeWord}" to begin`;
+                        
+                        console.log(`🎯 RETURNING TO WAKE WORD DETECTION MODE - Say "${wakeWord}" to activate`);
+                        
+                        if (this.onStatusChange) {
+                            this.onStatusChange(readyMessage);
+                        }
+                        
+                        // Update modern UI to idle state
+                        if (window.modernJarvis) {
+                            window.modernJarvis.updateBubbleState('idle');
+                            window.modernJarvis.updateStatus('Ready', `Say "${wakeWord}" to begin`);
+                        }
+                        
                         try {
                             this.startListening();
+                            console.log('✅ System ready for immediate "Jarvis" detection');
+                            console.log(`⚡ Total restart time: ~300ms - Next "Jarvis" will be instantly responsive!`);
                         } catch (error) {
                             console.error('Failed to restart recognition:', error);
+                            // Single retry with minimal delay
+                            setTimeout(() => {
+                                console.log('🔄 Retrying speech recognition start...');
+                                try {
+                                    this.startListening();
+                                } catch (retryError) {
+                                    console.error('Failed to restart recognition on retry:', retryError);
+                                }
+                            }, 250);
                         }
-                    }, 250);
+                    }, 50); // Reduced from 100ms to 50ms for even faster response
                 }
-            }, 750);
+            }, 250); // Reduced from 500ms to 250ms for immediate restart
         };
         
         utterance.onerror = (event) => {
@@ -1068,69 +1231,54 @@ class VoiceAssistant {
     }
     
     async startListening() {
-        if (!this.recognition) {
-            this.showError('Speech recognition not available');
+        // Defensive check: Don't start if already processing or speaking
+        if (this.isProcessing || this.processingLock || this.synthesisLock || this.isSpeaking) {
+            console.warn('🚫 Cannot start listening - system is busy');
             return false;
         }
         
-        // Test microphone access on first start
-        if (!this.microphoneTested) {
-            console.log('🔬 Testing microphone for first time...');
-            const microphoneOk = await this.testMicrophone();
-            this.microphoneTested = true;
+        // Use enhanced speech if available and provider is 'webspeech'
+        if (this.speechRecognitionProvider === 'webspeech' && this.enhancedWebSpeech) {
+            console.log('🚀 Starting enhanced Web Speech API recognition');
             
-            if (!microphoneOk) {
-                console.error('❌ Cannot start speech recognition - microphone test failed');
-                return false;
+            // Double-check enhanced speech isn't already listening
+            const status = this.enhancedWebSpeech.getStatus();
+            if (status.isListening) {
+                console.warn('🚫 Enhanced speech already listening - skipping start');
+                return true; // Already running successfully
+            }
+            
+            try {
+                this.enhancedWebSpeech.start();
+                this.isListening = true;
+                return true;
+            } catch (error) {
+                console.warn('Enhanced speech failed to start, falling back to basic:', error);
+                // Fall through to basic recognition
             }
         }
         
-        // Check if recognition is already active
+        // Fallback to basic Web Speech API
+        if (!this.isInitialized) {
+            console.error('Voice Assistant not initialized');
+            return false;
+        }
+        
         if (this.isListening) {
-            console.log('Speech recognition already active, skipping start');
-            return true;
+            console.warn('🚫 Basic speech recognition already running - ignoring duplicate start request');
+            return true; // Already running successfully
         }
         
         try {
-            console.log('🎤 Starting speech recognition...');
-            // Clear all state when starting fresh
-            this.isListening = true;
-            this.wakeWordDetected = false;
-            this.lastTranscript = '';
-            this.lastCommandTime = 0;
-            if (this.commandTimeout) {
-                clearTimeout(this.commandTimeout);
-                this.commandTimeout = null;
-            }
-            
             this.recognition.start();
+            this.isListening = true;
             return true;
         } catch (error) {
-            console.error('Error starting speech recognition:', error);
-            this.isListening = false; // Reset state on error
-            this.showError(`Error starting speech recognition: ${error.message}`);
+            console.error('Failed to start speech recognition:', error);
+            if (this.onError) {
+                this.onError(`Failed to start speech recognition: ${error.message}`);
+            }
             return false;
-        }
-    }
-    
-    stopListening() {
-        if (this.recognition) {
-            console.log('Stopping speech recognition...');
-            this.isListening = false;
-            this.wakeWordDetected = false;
-            
-            try {
-                this.recognition.stop();
-            } catch (error) {
-                console.log('Speech recognition already stopped:', error.message);
-            }
-            
-            if (this.onStatusChange) {
-                this.onStatusChange('Stopped');
-            }
-            if (this.onListeningChange) {
-                this.onListeningChange(false);
-            }
         }
     }
     
@@ -1947,11 +2095,45 @@ class VoiceAssistant {
      * @returns {Object|null} Routing recommendation or null if not available
      */
     getProviderRecommendation(options = {}) {
-        if (!this.audioEnvironmentDetector) {
-            return { provider: 'webspeech', confidence: 0.5, reason: 'no_detector' };
+        // MODIFIED: Prioritize Whisper API for better accuracy with aviation terminology
+        
+        console.log('🔍 Provider Recommendation Debug:');
+        console.log(`   - Whisper client exists: ${!!this.whisperClient}`);
+        
+        // Check if Whisper is available and configured
+        if (this.whisperClient) {
+            const status = this.whisperClient.getStatus();
+            console.log(`   - Whisper status: hasAPIKey=${status.hasAPIKey}, canMakeRequest=${status.canMakeRequest}`);
+            
+            if (status.hasAPIKey && status.canMakeRequest) {
+                console.log('✅ Recommending Whisper (primary, accurate)');
+                return { 
+                    provider: 'whisper', 
+                    confidence: 0.9, 
+                    reason: 'whisper_primary_accurate' 
+                };
+            } else {
+                console.log('❌ Whisper unavailable - API key or request limit issues');
+            }
+        } else {
+            console.log('❌ Whisper client not initialized');
         }
         
-        return this.audioEnvironmentDetector.getRoutingRecommendation(options);
+        // Use environmental detector if available for Web Speech fallback
+        if (this.audioEnvironmentDetector) {
+            const recommendation = this.audioEnvironmentDetector.getRoutingRecommendation(options);
+            console.log(`✅ Using environmental detector recommendation: ${recommendation.provider}`);
+            // Force Web Speech as fallback since Whisper isn't available
+            return { 
+                provider: 'webspeech', 
+                confidence: recommendation.confidence * 0.7, // Lower confidence since it's fallback
+                reason: 'webspeech_fallback' 
+            };
+        }
+        
+        // Final fallback to Web Speech
+        console.log('✅ Final fallback to Web Speech');
+        return { provider: 'webspeech', confidence: 0.5, reason: 'no_detector_fallback' };
     }
     
     /**
@@ -1970,6 +2152,52 @@ class VoiceAssistant {
         if (this.onStatusChange) {
             this.onStatusChange(`Speech recognition mode: ${provider === 'whisper' ? 'Enhanced (Whisper)' : 'Standard (Web Speech)'}`);
         }
+    }
+
+    /**
+     * Set OpenAI API key for Whisper functionality
+     * @param {string} apiKey - OpenAI API key starting with 'sk-'
+     */
+    setOpenAIAPIKey(apiKey) {
+        if (!apiKey || !apiKey.startsWith('sk-')) {
+            console.warn('Invalid OpenAI API key. Must start with "sk-"');
+            return false;
+        }
+        
+        localStorage.setItem('openai_api_key', apiKey);
+        console.log('✅ OpenAI API key saved for Whisper functionality');
+        
+        // Reinitialize Whisper client if it exists
+        if (this.whisperClient) {
+            this.whisperClient.updateAPIKey(apiKey);
+        }
+        
+        return true;
+    }
+
+    /**
+     * Check if Whisper is properly configured
+     */
+    checkWhisperStatus() {
+        if (!this.whisperClient) {
+            console.log('❌ Whisper client not initialized');
+            return { available: false, reason: 'client_not_initialized' };
+        }
+        
+        const status = this.whisperClient.getStatus();
+        if (!status.hasAPIKey) {
+            console.log('❌ Whisper API key not configured');
+            console.log('💡 Set your OpenAI API key: voiceAssistant.setOpenAIAPIKey("sk-your-key-here")');
+            return { available: false, reason: 'no_api_key' };
+        }
+        
+        if (!status.canMakeRequest) {
+            console.log('❌ Whisper cannot make requests (cost limits or other restrictions)');
+            return { available: false, reason: 'cannot_make_request' };
+        }
+        
+        console.log('✅ Whisper is properly configured and ready');
+        return { available: true };
     }
     
     /**
@@ -2056,38 +2284,34 @@ class VoiceAssistant {
     /**
      * Handle enhanced speech recognition start
      */
-    handleEnhancedSpeechStart() {
-        this.isListening = true;
+    onEnhancedSpeechStart() {
         console.log('🎤 Enhanced speech recognition started');
-        
-        if (this.onStatusChange) {
-            this.onStatusChange('Enhanced speech recognition active...');
-        }
+        console.log(`📊 Current state: listening=${this.isListening}, processing=${this.isProcessing}, synthesis=${this.synthesisLock}`);
+        this.isListening = true;
         
         if (this.onListeningChange) {
             this.onListeningChange(true);
+        }
+        
+        if (this.onBubbleStateChange) {
+            this.onBubbleStateChange('listening');
         }
     }
     
     /**
      * Handle enhanced speech recognition end
      */
-    handleEnhancedSpeechEnd() {
-        this.isListening = false;
+    onEnhancedSpeechEnd() {
         console.log('🎤 Enhanced speech recognition ended');
+        console.log(`📊 Current state: listening=${this.isListening}, processing=${this.isProcessing}, synthesis=${this.synthesisLock}`);
+        this.isListening = false;
         
         if (this.onListeningChange) {
             this.onListeningChange(false);
         }
         
-        // Auto-restart if needed (following same logic as basic recognition)
-        if (!this.isProcessing && !this.processingLock && !this.wakeWordDetected) {
-            setTimeout(() => {
-                if (!this.isProcessing && !this.processingLock && !this.isListening && !this.wakeWordDetected) {
-                    console.log('🔄 Restarting enhanced speech recognition...');
-                    this.startListening();
-                }
-            }, 2000);
+        if (this.onBubbleStateChange) {
+            this.onBubbleStateChange('idle');
         }
     }
     
@@ -2130,74 +2354,50 @@ class VoiceAssistant {
     }
     
     /**
-     * Override startListening to use enhanced speech when appropriate
+     * Override startListening to use basic speech recognition (Enhanced disabled due to errors)
      */
     startListening() {
-        // Use enhanced speech if available and provider is 'webspeech'
-        if (this.speechRecognitionProvider === 'webspeech' && this.enhancedWebSpeech) {
-            console.log('🚀 Starting enhanced Web Speech API recognition');
-            try {
-                this.enhancedWebSpeech.start();
-                return;
-            } catch (error) {
-                console.warn('Enhanced speech failed to start, falling back to basic:', error);
-                // Fall through to basic recognition
-            }
+        // Defensive check: Don't start if already processing or speaking
+        if (this.isProcessing || this.processingLock || this.synthesisLock || this.isSpeaking) {
+            console.warn('🚫 Cannot start listening - system is busy');
+            return false;
         }
         
-        // Fallback to basic Web Speech API
+        // TEMPORARILY DISABLED: Enhanced Web Speech API due to "aborted" error loops
+        // Using basic Web Speech API for stability
+        console.log('🎤 Starting basic Web Speech API recognition (Enhanced disabled)');
+        
+        // Use basic Web Speech API
         if (!this.isInitialized) {
-            throw new Error('Voice Assistant not initialized');
+            console.error('Voice Assistant not initialized');
+            return false;
         }
         
         if (this.isListening) {
-            console.warn('Speech recognition already running - ignoring duplicate start request');
-            return;
-        }
-        
-        if (this.isProcessing || this.processingLock || this.synthesisLock || this.isSpeaking) {
-            console.warn('Cannot start listening - system is busy (processing, synthesis, or speaking)');
-            return;
+            console.warn('🚫 Basic speech recognition already running - ignoring duplicate start request');
+            return true; // Already running successfully
         }
         
         try {
             this.recognition.start();
+            this.isListening = true;
+            console.log('✅ Basic Web Speech API started successfully');
+            return true;
         } catch (error) {
             console.error('Failed to start speech recognition:', error);
             if (this.onError) {
                 this.onError(`Failed to start speech recognition: ${error.message}`);
             }
+            return false;
         }
     }
     
-    /**
-     * Override stopListening to handle both enhanced and basic speech
-     */
-    stopListening() {
-        console.log('🛑 Stopping speech recognition and clearing state');
-        
-        if (this.enhancedWebSpeech && this.enhancedWebSpeech.getStatus().isListening) {
-            this.enhancedWebSpeech.stop();
-        }
-        
-        if (this.recognition && this.isListening) {
-            this.recognition.stop();
-        }
-        
-        // Clear any command timeouts to prevent interference
-        if (this.commandTimeout) {
-            clearTimeout(this.commandTimeout);
-            this.commandTimeout = null;
-        }
-        
-        this.isListening = false;
-        console.log('🛑 Speech recognition stopped and state cleared');
-    }
+
     
     /**
      * Centralized state reset to prevent conflicts
      */
-    resetProcessingState() {
+    async resetProcessingState(shouldRestartListening = true) {
         console.log('🔄 Resetting all processing state');
         this.isProcessing = false;
         this.processingLock = false;
@@ -2212,13 +2412,25 @@ class VoiceAssistant {
             this.commandTimeout = null;
         }
         
-        // Restart listening after a brief delay to ensure clean state
-        setTimeout(() => {
-            if (!this.isListening && !this.isProcessing && !this.processingLock) {
-                console.log('🔄 Restarting listening after state reset');
-                this.startListening();
+        // Only restart listening if requested (to avoid conflicts with manual restart logic)
+        if (shouldRestartListening) {
+            // Wait for enhanced speech reset if available
+            if (this.enhancedWebSpeech) {
+                try {
+                    await this.enhancedWebSpeech.reset();
+                } catch (error) {
+                    console.warn('Error during enhanced speech reset in resetProcessingState:', error);
+                }
             }
-        }, 250);
+            
+            // Restart listening after reset is complete and brief delay to ensure clean state
+            setTimeout(() => {
+                if (!this.isListening && !this.isProcessing && !this.processingLock) {
+                    console.log('🔄 Restarting listening after state reset');
+                    this.startListening();
+                }
+            }, 150);
+        }
     }
     
     /**
@@ -2371,8 +2583,10 @@ class VoiceAssistant {
      * Enhanced startListening to route to appropriate provider
      */
     async startListeningWithHybridRouting() {
+        console.log(`🔍 Hybrid Mode Debug: enabled=${this.hybridModeEnabled}, whisperClient=${!!this.whisperClient}`);
+        
         if (!this.hybridModeEnabled) {
-            // Fallback to standard listening
+            console.log('🔄 Hybrid mode disabled, using standard Web Speech');
             return this.startListening();
         }
         
@@ -2382,10 +2596,19 @@ class VoiceAssistant {
         
         console.log(`🎯 Hybrid Routing: Using ${recommendation.provider} (reason: ${recommendation.reason}, confidence: ${recommendation.confidence.toFixed(2)})`);
         
-        // Route to appropriate provider
+        // Route to appropriate provider with better error handling
         if (recommendation.provider === 'whisper' && this.whisperClient) {
-            return await this.startWhisperListening();
+            try {
+                console.log('🤖 Attempting to start Whisper...');
+                return await this.startWhisperListening();
+            } catch (error) {
+                console.error('❌ Whisper failed to start:', error);
+                console.log('🔄 Falling back to Web Speech API');
+                this.speechRecognitionProvider = 'webspeech';
+                return this.startListening();
+            }
         } else {
+            console.log('🎤 Using Web Speech API (Whisper not available or not recommended)');
             return this.startListening(); // Enhanced Web Speech or fallback
         }
     }
@@ -2702,5 +2925,42 @@ class VoiceAssistant {
                 costs: this.lastWhisperCosts || null
             }
         };
+    }
+    
+    /**
+     * Heartbeat check to ensure system stays responsive
+     */
+    startHeartbeat() {
+        // Clear any existing heartbeat
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+        
+        this.heartbeatInterval = setInterval(() => {
+            // Only check if system is idle and should be listening for wake words
+            if (!this.isProcessing && !this.processingLock && !this.synthesisLock && !this.isSpeaking && !this.wakeWordDetected) {
+                // Check if speech recognition is running when it should be
+                const shouldBeListening = this.isInitialized && !this.isListening;
+                
+                if (shouldBeListening) {
+                    console.log('🩺 Heartbeat: Restarting speech recognition (was stopped unexpectedly)');
+                    try {
+                        this.startListening();
+                    } catch (error) {
+                        console.warn('Heartbeat restart failed:', error);
+                    }
+                }
+            }
+        }, 2000); // Check every 2 seconds for faster recovery
+    }
+    
+    /**
+     * Stop heartbeat monitoring
+     */
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
     }
 } 

@@ -40,6 +40,7 @@ class EnhancedWebSpeechAPI {
         this.errorRecovery = new ErrorRecoveryManager(this.config);
         this.retryCount = 0;
         this.lastError = null;
+        this.retryTimeout = null; // Track retry timeouts for cleanup
         
         // Performance optimization (Task 2.3)
         this.aviationOptimizer = new AviationTerminologyOptimizer();
@@ -367,10 +368,18 @@ class EnhancedWebSpeechAPI {
             return;
         }
         
+        // Ensure recognition object exists and is in proper state
+        if (!this.recognition) {
+            console.log('🔄 Recognition object missing, reinitializing...');
+            this.setupSpeechRecognition();
+        }
+        
         try {
             this.lastError = null;
+            this.isListening = true; // Set before starting to prevent race conditions
             this.recognition.start();
         } catch (error) {
+            this.isListening = false; // Reset on error
             console.error('Failed to start speech recognition:', error);
             this.handleError({ error: 'start-failed', message: error.message });
         }
@@ -401,36 +410,81 @@ class EnhancedWebSpeechAPI {
     reset() {
         console.log('🔄 Resetting Enhanced Web Speech API state...');
         
-        // Stop any active recognition
-        if (this.recognition) {
-            try {
-                this.recognition.abort();
-            } catch (error) {
-                console.warn('Error aborting recognition during reset:', error);
+        return new Promise((resolve) => {
+            // Clear any existing timeouts or intervals that might interfere
+            if (this.retryTimeout) {
+                clearTimeout(this.retryTimeout);
+                this.retryTimeout = null;
             }
-        }
-        
-        // Reset all state variables
-        this.isListening = false;
-        this.lastResults = [];
-        this.confidenceHistory = [];
-        this.retryCount = 0;
-        this.lastError = null;
-        
-        // Reset performance metrics
-        this.performanceMetrics = {
-            recognitionAttempts: 0,
-            successfulRecognitions: 0,
-            averageLatency: 0,
-            confidenceScores: [],
-            errorCounts: {}
-        };
-        
-        // Reinitialize the recognition object to ensure clean state
-        setTimeout(() => {
-            this.setupSpeechRecognition();
-            console.log('✅ Enhanced Web Speech API state reset complete');
-        }, 100);
+            
+            // Stop any active recognition and wait for it to fully end
+            if (this.recognition) {
+                const handleResetEnd = () => {
+                    // Remove the temporary event listener
+                    if (this.recognition && this.recognition.removeEventListener) {
+                        this.recognition.removeEventListener('end', handleResetEnd);
+                    }
+                    
+                    // Reset all state variables
+                    this.isListening = false;
+                    this.lastResults = [];
+                    this.confidenceHistory = [];
+                    this.retryCount = 0;
+                    this.lastError = null;
+                    
+                    // Reset performance metrics
+                    this.performanceMetrics = {
+                        recognitionAttempts: 0,
+                        successfulRecognitions: 0,
+                        averageLatency: 0,
+                        confidenceScores: [],
+                        errorCounts: {}
+                    };
+                    
+                    // Completely reinitialize the recognition object for clean state
+                    this.recognition = null; // Clear the old one first
+                    setTimeout(() => {
+                        this.setupSpeechRecognition();
+                        console.log('✅ Enhanced Web Speech API state reset complete');
+                        resolve();
+                    }, 50); // Small delay to ensure clean initialization
+                };
+                
+                if (this.isListening) {
+                    // Add temporary event listener for this reset operation
+                    this.recognition.addEventListener('end', handleResetEnd);
+                    try {
+                        this.recognition.abort();
+                    } catch (error) {
+                        console.warn('Error aborting recognition during reset:', error);
+                        // If abort fails, still proceed with reset after a short delay
+                        setTimeout(handleResetEnd, 100);
+                    }
+                } else {
+                    // Not listening, can reset immediately
+                    handleResetEnd();
+                }
+            } else {
+                // No recognition object, just reset state and create new one
+                this.isListening = false;
+                this.lastResults = [];
+                this.confidenceHistory = [];
+                this.retryCount = 0;
+                this.lastError = null;
+                
+                this.performanceMetrics = {
+                    recognitionAttempts: 0,
+                    successfulRecognitions: 0,
+                    averageLatency: 0,
+                    confidenceScores: [],
+                    errorCounts: {}
+                };
+                
+                this.setupSpeechRecognition();
+                console.log('✅ Enhanced Web Speech API state reset complete');
+                resolve();
+            }
+        });
     }
     
     /**
