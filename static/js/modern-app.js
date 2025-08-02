@@ -196,8 +196,12 @@ class ModernJarvisApp {
         
         // Set up callbacks for the new UI
         this.voiceAssistant.onStatusChange = (status) => {
-            // Update bubble state based on status for complex queries
+            // Update bubble state based on status for ALL processing (not just complex queries)
             if (status.includes('Analyzing complex scenario')) {
+                this.updateBubbleState('processing');
+                this.updateStatus(status, 'Please wait...');
+            } else if (status.includes('Processing your request')) {
+                // Show processing bubble for regular queries too
                 this.updateBubbleState('processing');
                 this.updateStatus(status, 'Please wait...');
             } else {
@@ -475,11 +479,14 @@ class ModernJarvisApp {
                 
                 this.updateStatus('Listening continuously', 'Say "Jarvis" to start');
                 
-                // Start proactive monitoring if available
+                // DISABLED: Start proactive monitoring if available
+                // Proactive monitoring can interfere with microphone permissions and voice recognition
+                /*
                 if (this.proactiveAssistant) {
                     this.proactiveAssistant.startMonitoring();
                     this.logMessage('system', 'Proactive assistance enabled');
                 }
+                */
                 
                 this.logMessage('system', '🎤 Voice assistant active - Continuously listening for "Jarvis"');
                 this.logMessage('system', '💡 The system will automatically restart listening if interrupted');
@@ -516,10 +523,12 @@ class ModernJarvisApp {
         
         this.voiceAssistant.stopListening();
         
-        // Stop proactive monitoring if available
+        // DISABLED: Stop proactive monitoring if available
+        /*
         if (this.proactiveAssistant) {
             this.proactiveAssistant.stopMonitoring();
         }
+        */
         
         // Update button states
         if (this.elements.startBtn) this.elements.startBtn.disabled = false;

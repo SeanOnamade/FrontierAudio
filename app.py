@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 class AirportVoiceAssistant:
-    def __init__(self, db_path='united_airlines_normalized.db'):
+    def __init__(self, db_path='united_airlines_normalized (Gauntlet).db'):
         self.db_path = db_path
         self.confidence_threshold = 0.7
         self.supported_languages = {
@@ -117,8 +117,9 @@ class AirportVoiceAssistant:
                         '"What is the status of flight UA406?" -> SELECT * FROM flights WHERE flight_number LIKE \'%UA406%\';',
                         '"Status of flight 406" -> SELECT * FROM flights WHERE flight_number LIKE \'%406%\';',
                         '"What pushback tractor is assigned to flight UA2406?" -> SELECT * FROM equipment WHERE assigned_flight = \'UA2406\' AND equipment_type = \'Pushback Tractor\';',
-                        '"Who is the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
-                        '"Who was the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
+                        '"Who is the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT e.first_name, e.last_name, e.phone_number FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA2406\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
+                        '"Who was the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT e.first_name, e.last_name, e.phone_number FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA2406\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
+                        '"Who is the lead cleaning for flight UA1234?" -> SELECT e.first_name, e.last_name FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA1234\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
                         '"Who is the cleaning lead and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
                         '"When does Maria Rodriguez shift end?" -> SELECT shift_end FROM employees WHERE first_name = \'Maria\' AND last_name = \'Rodriguez\';',
                         '"What is the nearest pushback tractor to gate A8?" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND status = \'Available\' ORDER BY current_location;',
@@ -340,16 +341,28 @@ Make the response natural for voice output but don't omit important details. Use
         
         # Fix common flight number speech recognition errors
         # "UA to 406" -> "UA406", "United to 406" -> "UA406"
+        # "you 82406" -> "UA2406", "a 2406" -> "UA2406"
         flight_patterns = [
             (r'\b(UA|United|united)\s+to\s+(\d+)', r'UA\2'),  # "UA to 406" -> "UA406"
             (r'\b(UA|United|united)\s+(\d+)', r'UA\2'),       # "UA 406" -> "UA406"
             (r'\bflight\s+(UA|United|united)\s+to\s+(\d+)', r'flight UA\2'),  # "flight UA to 406" -> "flight UA406"
             (r'\bflight\s+(UA|United|united)\s+(\d+)', r'flight UA\2'),       # "flight UA 406" -> "flight UA406"
+            # Common mishearing patterns
+            (r'\byou\s+(\d{2,5})', r'UA\1'),              # "you 82406" -> "UA82406", "you 2406" -> "UA2406"
+            (r'\ba\s+(\d{4,5})', r'UA\1'),                # "a 2406" -> "UA2406"
+            (r'\bflight\s+you\s+(\d{2,5})', r'flight UA\1'),  # "flight you 82406" -> "flight UA82406"
+            (r'\bflight\s+a\s+(\d{4,5})', r'flight UA\1'),    # "flight a 2406" -> "flight UA2406"
+            (r'\b8(\d{4})', r'UA\1'),                     # "82406" -> "UA2406" (common 8/UA confusion)
         ]
         
         # Apply flight number fixes
+        original_query = user_query
         for pattern, replacement in flight_patterns:
             user_query = re.sub(pattern, replacement, user_query, flags=re.IGNORECASE)
+        
+        # Log preprocessing changes if flight numbers were modified
+        if original_query != user_query:
+            logging.info(f"🔧 FLIGHT NUMBER CORRECTION: '{original_query}' → '{user_query}'")
         
         # Common word corrections for airport operations
         corrections = [

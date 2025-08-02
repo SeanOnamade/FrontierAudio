@@ -25,7 +25,7 @@ class VoiceAssistant {
         // Conversation & Context features
         this.conversationMemory = null;
         this.smartQueryProcessor = null;
-        this.proactiveAssistant = null;
+        this.proactiveAssistant = null; // Disabled to prevent interference with voice recognition
         
         // Hybrid Speech Recognition features
         this.audioEnvironmentDetector = null;
@@ -97,21 +97,6 @@ class VoiceAssistant {
         
         // Initialize smart query processor
         this.smartQueryProcessor = new SmartQueryProcessor();
-        
-        // Initialize proactive assistant with reference to this voice assistant
-        this.proactiveAssistant = new ProactiveAssistant('/api', this);
-        this.proactiveAssistant.onNotification = (alert) => {
-            console.log('Proactive notification:', alert);
-        };
-        this.proactiveAssistant.onAlert = (alert) => {
-            console.log('Proactive alert:', alert);
-        };
-        this.proactiveAssistant.onCriticalAlert = (alert) => {
-            console.log('Critical alert:', alert);
-            if (this.onStatusChange) {
-                this.onStatusChange(`ALERT: ${alert.message}`);
-            }
-        };
         
         // Initialize language manager with retry logic
         if (typeof LanguageManager !== 'undefined') {
@@ -784,7 +769,10 @@ class VoiceAssistant {
         }
         
         if (this.onStatusChange) {
+            console.log('🔄 Setting status to: Processing your request...');
             this.onStatusChange('Processing your request...');
+        } else {
+            console.log('❌ onStatusChange callback not set!');
         }
         
         try {
@@ -900,7 +888,11 @@ class VoiceAssistant {
             this.lastTranscript = ''; // Clear transcript after processing
             console.log('✅ Command processing completed - all state reset');
            
-            // Don't restart here - wait for TTS completion to avoid conflicts
+            // Restart listening after processing completes
+            setTimeout(async () => {
+                console.log('🔄 Auto-restarting listening after command processing');
+                await this.resetProcessingState(true);
+            }, 500); // Small delay to allow TTS to start if needed
 
         }
     }
