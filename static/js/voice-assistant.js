@@ -784,7 +784,10 @@ class VoiceAssistant {
         }
         
         if (this.onStatusChange) {
+            console.log('🔄 Setting status to: Processing your request...');
             this.onStatusChange('Processing your request...');
+        } else {
+            console.log('❌ onStatusChange callback not set!');
         }
         
         try {
