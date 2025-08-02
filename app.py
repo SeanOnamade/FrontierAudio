@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 openai_client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 class AirportVoiceAssistant:
-    def __init__(self, db_path='united_airlines_normalized.db'):
+    def __init__(self, db_path='united_airlines_normalized (Gauntlet).db'):
         self.db_path = db_path
         self.confidence_threshold = 0.7
         self.supported_languages = {
