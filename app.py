@@ -341,16 +341,28 @@ Make the response natural for voice output but don't omit important details. Use
         
         # Fix common flight number speech recognition errors
         # "UA to 406" -> "UA406", "United to 406" -> "UA406"
+        # "you 82406" -> "UA2406", "a 2406" -> "UA2406"
         flight_patterns = [
             (r'\b(UA|United|united)\s+to\s+(\d+)', r'UA\2'),  # "UA to 406" -> "UA406"
             (r'\b(UA|United|united)\s+(\d+)', r'UA\2'),       # "UA 406" -> "UA406"
             (r'\bflight\s+(UA|United|united)\s+to\s+(\d+)', r'flight UA\2'),  # "flight UA to 406" -> "flight UA406"
             (r'\bflight\s+(UA|United|united)\s+(\d+)', r'flight UA\2'),       # "flight UA 406" -> "flight UA406"
+            # Common mishearing patterns
+            (r'\byou\s+(\d{2,5})', r'UA\1'),              # "you 82406" -> "UA82406", "you 2406" -> "UA2406"
+            (r'\ba\s+(\d{4,5})', r'UA\1'),                # "a 2406" -> "UA2406"
+            (r'\bflight\s+you\s+(\d{2,5})', r'flight UA\1'),  # "flight you 82406" -> "flight UA82406"
+            (r'\bflight\s+a\s+(\d{4,5})', r'flight UA\1'),    # "flight a 2406" -> "flight UA2406"
+            (r'\b8(\d{4})', r'UA\1'),                     # "82406" -> "UA2406" (common 8/UA confusion)
         ]
         
         # Apply flight number fixes
+        original_query = user_query
         for pattern, replacement in flight_patterns:
             user_query = re.sub(pattern, replacement, user_query, flags=re.IGNORECASE)
+        
+        # Log preprocessing changes if flight numbers were modified
+        if original_query != user_query:
+            logging.info(f"🔧 FLIGHT NUMBER CORRECTION: '{original_query}' → '{user_query}'")
         
         # Common word corrections for airport operations
         corrections = [
