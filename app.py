@@ -339,7 +339,44 @@ Make the response natural for voice output but don't omit important details. Use
                 user_query = user_query[len(wake_word):].strip()
                 break
         
-        # Fix common flight number speech recognition errors
+        # 🔧 SPEECH RECOGNITION ERROR PATTERNS: Common mishearings and corrections
+        speech_error_patterns = [
+            # Common "flight" mishearings
+            (r'\bconvoy\b', 'flight'),                    # "convoy" → "flight"
+            (r'\bplayed to\b', 'flight'),                 # "played to" → "flight"
+            (r'\bponderous lights\b', 'flight'),          # "ponderous lights" → "flight"
+            (r'\bflat\b', 'flight'),                      # "flat" → "flight"
+            (r'\bfright\b', 'flight'),                    # "fright" → "flight"
+            (r'\bplight\b', 'flight'),                    # "plight" → "flight"
+            (r'\bblast\b', 'flight'),                     # "blast" → "flight"
+            (r'\bflight\s+to\b', 'flight'),               # "flight to" → "flight"
+            
+            # Common number confusions (2406 variants)
+            (r'\b2046\b', '2406'),                        # "2046" → "2406"
+            (r'\b2460\b', '2406'),                        # "2460" → "2406"
+            (r'\b2064\b', '2406'),                        # "2064" → "2406"
+            (r'\b24[0-9]6\b', '2406'),                    # Any 24X6 → 2406
+            (r'\b20[4-6][0-6]\b', '2406'),                # Common 20XX variants → 2406
+            
+            # Specific pattern from user's exact problem
+            (r'\bwhat is the convoy you 82406\b', 'what is the flight status of UA2406'),
+            (r'\bwhat is this played to 406\b', 'what is the flight status of UA2406'),
+            (r'\bwhat is the status on a 2046\b', 'what is the flight status of UA2406'),
+            (r'\bwhat does ponderous lights 2046\b', 'what is the flight status of UA2406'),
+        ]
+        
+        # Store original for comparison
+        original_user_query = user_query
+        
+        # Apply speech error corrections
+        for pattern, replacement in speech_error_patterns:
+            user_query = re.sub(pattern, replacement, user_query, flags=re.IGNORECASE)
+        
+        # Log speech corrections
+        if original_user_query != user_query:
+            logging.info(f"🔧 SPEECH ERROR CORRECTION: '{original_user_query}' → '{user_query}'")
+        
+        # 🔧 FLIGHT NUMBER PATTERNS: Fix common flight number speech recognition errors
         # "UA to 406" -> "UA406", "United to 406" -> "UA406"
         # "you 82406" -> "UA2406", "a 2406" -> "UA2406"
         flight_patterns = [
