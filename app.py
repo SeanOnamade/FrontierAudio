@@ -353,6 +353,9 @@ Make the response natural for voice output but don't omit important details. Use
             (r'\bflight\s+you\s+(\d{2,5})', r'flight UA\1'),  # "flight you 82406" -> "flight UA82406"
             (r'\bflight\s+a\s+(\d{4,5})', r'flight UA\1'),    # "flight a 2406" -> "flight UA2406"
             (r'\b8(\d{4})', r'UA\1'),                     # "82406" -> "UA2406" (common 8/UA confusion)
+            # Standalone 4-digit flight numbers
+            (r'\bflight\s+(\d{4})\b', r'flight UA\1'),    # "flight 1212" -> "flight UA1212"
+            (r'\b(\d{4})\b(?=\s|$)', r'UA\1'),           # "1212" -> "UA1212" (standalone 4-digit numbers)
         ]
         
         # Apply flight number fixes

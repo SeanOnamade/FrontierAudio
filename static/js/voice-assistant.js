@@ -463,8 +463,11 @@ class VoiceAssistant {
         // 🔥 ULTRA-FAST INTERRUPTION: Check for "jarvis" on ALL results (even interim) when speaking
         if (this.isSpeaking && this.allowInterruption) {
             const ultraQuickCheck = transcript.toLowerCase();
-            if (ultraQuickCheck.includes('jarv') || ultraQuickCheck.includes('jar')) {
+            if (ultraQuickCheck.includes('jarv') || ultraQuickCheck.includes('jar') || ultraQuickCheck.includes('j')) {
                 console.log('🚨🚨 ULTRA-FAST INTERRUPTION on interim result! Stopping NOW!');
+                // IMMEDIATE forced stop - don't wait for handleInterruption method
+                this.synthesis.cancel();
+                this.synthesis.pause();
                 this.handleInterruption();
                 return; // Exit immediately
             }
@@ -482,8 +485,12 @@ class VoiceAssistant {
             // 🔥 SUPER AGGRESSIVE INTERRUPTION: Check immediately if we're speaking
             if (this.isSpeaking && this.allowInterruption && transcript.length > 0) {
                 const quickInterruptCheck = transcript.toLowerCase().trim();
-                if (quickInterruptCheck.includes('jarvis') || quickInterruptCheck.includes('javi') || quickInterruptCheck.includes('jar')) {
+                if (quickInterruptCheck.includes('jarvis') || quickInterruptCheck.includes('javi') || quickInterruptCheck.includes('jar') || quickInterruptCheck.includes('j')) {
                     console.log('🚨 IMMEDIATE INTERRUPTION DETECTED! Cancelling speech NOW!');
+                    // FORCE STOP IMMEDIATELY - multiple methods
+                    this.synthesis.cancel();
+                    this.synthesis.pause();
+                    this.synthesis.cancel(); // Cancel again for extra assurance
                     this.handleInterruption();
                     return; // Exit immediately to stop current response
                 }
@@ -1327,20 +1334,27 @@ class VoiceAssistant {
         // Set interruption flag to prevent normal restart behavior
         this.interruptedDuringResponse = true;
         
-        // IMMEDIATELY and AGGRESSIVELY stop current speech synthesis
+        // ULTRA-AGGRESSIVE speech synthesis cancellation - try everything!
         if (this.synthesis.speaking) {
             this.synthesis.cancel();
+            this.synthesis.pause();
+            
+            // Force multiple cancellation attempts
+            setTimeout(() => this.synthesis.cancel(), 1);
+            setTimeout(() => this.synthesis.cancel(), 10);
+            setTimeout(() => this.synthesis.cancel(), 50);
+            
             console.log('✅ Speech synthesis CANCELLED due to interruption');
         }
         
-        // Also try to pause if cancel doesn't work immediately
-        try {
-            this.synthesis.pause();
-            setTimeout(() => {
+        // Also try to cancel any active utterance
+        if (this.currentUtterance) {
+            try {
+                this.currentUtterance.onend = null; // Prevent normal end handling
                 this.synthesis.cancel();
-            }, 10); // Cancel again after a tiny delay
-        } catch (error) {
-            console.log('Additional synthesis stop attempt:', error);
+            } catch (error) {
+                console.log('Utterance cancellation attempt:', error);
+            }
         }
         
         // Clear current utterance
