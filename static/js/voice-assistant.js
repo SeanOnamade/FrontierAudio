@@ -11,7 +11,7 @@ class VoiceAssistant {
         this.commandTimeout = null; // Timer for processing commands
         this.processingLock = false; // Prevent multiple processing attempts
         this.lastWakeWordTime = 0; // Timestamp of last wake word detection
-        this.globalCooldown = 200; // Reduced from 500ms to 200ms for faster response
+        this.globalCooldown = 50; // Ultra-responsive: 50ms for immediate wake word detection
         this.microphoneTested = false; // Track if microphone has been tested
         this.heartbeatInterval = null; // Periodic check to ensure system stays responsive
         
@@ -488,23 +488,29 @@ class VoiceAssistant {
         // Debug: Show current mode
         console.log(`🔍 Transcript received: "${transcript}" | Mode: ${this.wakeWordDetected ? 'COMMAND_LISTENING' : 'WAKE_WORD_DETECTION'} | Final: ${isFinal}`);
         
-        // 🔥 SIMPLE & RELIABLE: Normal wake word detection first
-        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
-            timeSinceLastWakeWord > this.globalCooldown) {
+        // 🚀 ULTRA-RESPONSIVE: Much more aggressive wake word detection
+        if (!this.wakeWordDetected && !this.processingLock) { 
+            // Removed strict conditions: !this.isProcessing and cooldown check for max responsiveness
             let wakeWordDetected = false;
             
             console.log(`🔍 Checking for wake word in: "${transcript}" (Normal mode)`);
             
-            // Simple wake word detection first (for normal idle state)
-            if (transcript.length > 1) {
+            // 🚀 ULTRA-RESPONSIVE wake word detection (lowered thresholds)
+            if (transcript.length > 0) { // Accept even single characters
                 const simpleCheck = transcript.toLowerCase().trim();
-                if (simpleCheck.includes('jarvis') || simpleCheck.endsWith('jarvis') || simpleCheck === 'jarvis') {
-                    console.log('✅ WAKE WORD DETECTED! Jarvis activated');
+                // More aggressive detection patterns
+                if (simpleCheck.includes('jarvis') || 
+                    simpleCheck.includes('javi') ||
+                    simpleCheck.includes('jar') ||
+                    simpleCheck === 'jarvis' ||
+                    simpleCheck.endsWith('jarvis') ||
+                    simpleCheck.startsWith('jarvis')) {
+                    console.log('✅ ULTRA-RESPONSIVE WAKE WORD DETECTED! Jarvis activated');
                     wakeWordDetected = true;
                 }
             }
         
-            // Enhanced wake word detection if simple didn't work
+            // 🚀 ALWAYS try enhanced detection for maximum responsiveness  
             if (!wakeWordDetected && this.enhancedWakeWordDetector) {
                 console.log('🔍 Using enhanced wake word detector...');
                 const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
@@ -512,8 +518,10 @@ class VoiceAssistant {
                 if (wakeWordDetected) {
                     console.log('✅ Enhanced wake word detected!', wakeWordResult);
                 }
-            } else if (!wakeWordDetected) {
-                // Fallback detection
+            }
+            
+            // 🚀 ALWAYS try fallback detection too
+            if (!wakeWordDetected) {
                 wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
                 if (wakeWordDetected) {
                     console.log('✅ Fallback wake word detected!');
@@ -576,15 +584,19 @@ class VoiceAssistant {
                 
                 return;
             }
-        } else if (isFinal && timeSinceLastWakeWord <= this.globalCooldown) {
-            console.log(`🚫 Wake word detection in cooldown (${(this.globalCooldown - timeSinceLastWakeWord)/1000}s remaining)`);
         } else if (this.wakeWordDetected && !this.isSpeaking) {
+            // Removed cooldown block - allowing immediate wake word detection for responsiveness
             // Wake word already detected, capture the command - but NOT while speaking
             
-            // Deduplicate transcripts to prevent accumulation
-            if (this.lastTranscript === transcript && transcript.length > 10) {
+            // Deduplicate transcripts to prevent accumulation (but be less aggressive after interruption)
+            if (this.lastTranscript === transcript && transcript.length > 10 && !this.interruptedDuringResponse) {
                 console.log(`🔄 Duplicate transcript ignored: "${transcript}"`);
                 return;
+            }
+            
+            // Allow transcript updates during interruption recovery
+            if (this.interruptedDuringResponse && transcript.length > this.lastTranscript.length) {
+                console.log(`🔄 Allowing transcript update during interruption recovery: "${transcript}"`);
             }
             
             // Detect repeated content in transcript (sign of multiple detections)
@@ -632,27 +644,36 @@ class VoiceAssistant {
                 this.processCommand(transcript);
             } 
             // For interim results, set a timeout to process if speech stops (less aggressive)
+            // BUT: Be more careful during interruption recovery to avoid processing partial commands
             else if (!isFinal && transcript.length > 10) {
-                console.log('🎤 Setting command timeout for interim result:', transcript);
-                this.commandTimeout = setTimeout(() => {
-                    if (this.wakeWordDetected && !this.isProcessing && !this.processingLock && this.lastTranscript.length > 10) {
-                        console.log('🎤 Processing voice command (timeout):', this.lastTranscript);
-                        
-                        // Send debug info to server
-                        fetch('/api/debug-query', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                                originalTranscript: this.lastTranscript,
-                                query: this.lastTranscript 
-                            })
-                        }).catch(e => console.warn('Debug logging failed:', e));
-                        
-                        this.processCommand(this.lastTranscript);
-                    } else {
-                        console.log('🚫 Timeout processing skipped - already processed or invalid state');
-                    }
-                }, 2000); // Process after 2 seconds of silence
+                const isRecovering = this.interruptedDuringResponse;
+                const minLength = isRecovering ? 20 : 10; // Require longer commands during recovery
+                const timeout = isRecovering ? 4000 : 2000; // Longer timeout during recovery
+                
+                if (transcript.length >= minLength) {
+                    console.log(`🎤 Setting command timeout for interim result: "${transcript}" (recovery: ${isRecovering})`);
+                    this.commandTimeout = setTimeout(() => {
+                        if (this.wakeWordDetected && !this.isProcessing && !this.processingLock && this.lastTranscript.length >= minLength) {
+                            console.log('🎤 Processing voice command (timeout):', this.lastTranscript);
+                            
+                            // Send debug info to server
+                            fetch('/api/debug-query', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ 
+                                    originalTranscript: this.lastTranscript,
+                                    query: this.lastTranscript 
+                                })
+                            }).catch(e => console.warn('Debug logging failed:', e));
+                            
+                            this.processCommand(this.lastTranscript);
+                        } else {
+                            console.log('🚫 Timeout processing skipped - already processed or invalid state');
+                        }
+                    }, timeout);
+                } else if (isRecovering) {
+                    console.log(`🔄 Interim transcript too short during recovery, waiting for more: "${transcript}"`);
+                }
             }
         }
         
@@ -661,12 +682,26 @@ class VoiceAssistant {
             const interruptCheck = transcript.toLowerCase().trim();
             const hasInterruptWord = interruptCheck.includes('jarvis') || interruptCheck.includes('javi') || interruptCheck.includes('jar');
             
+            // Prevent rapid multiple interruption detections from same transcript
+            if (hasInterruptWord && Date.now() - this.lastInterruptionTime < 1000) {
+                console.log('🚫 Ignoring duplicate interruption detection (1s cooldown)');
+                return;
+            }
+            
             // PRIMARY CHECK: Normal speech state
             if (this.isSpeaking && this.allowInterruption && hasInterruptWord) {
                 console.log(`🔍 PRIMARY INTERRUPTION: "${interruptCheck}" (isSpeaking=${this.isSpeaking})`);
                 console.log('🛑 INTERRUPTION DETECTED! Stopping current speech...');
+                
+                // 🚫 CRITICAL: Set flags BEFORE calling emergencyStopSpeech to prevent TTS retry
+                this.speechEffectivelyStopped = true;
+                this.interruptedDuringResponse = true;
+                
                 this.emergencyStopSpeech();
                 this.handleInterruption();
+                
+                // 🔄 Don't clear transcript during interruption - let natural processing handle it
+                console.log('🔄 Skipping transcript clear during interruption - letting natural flow handle it');
                 return; // Exit immediately
             }
             
@@ -675,8 +710,16 @@ class VoiceAssistant {
                 console.log(`🔍 BACKUP INTERRUPTION 1: "${interruptCheck}" (synthesis.speaking=${this.synthesis.speaking})`);
                 console.log('🛑 BACKUP INTERRUPTION DETECTED! Stopping current speech...');
                 this.isSpeaking = true; // Fix the state
+                
+                // 🚫 CRITICAL: Set flags BEFORE calling emergencyStopSpeech to prevent TTS retry
+                this.speechEffectivelyStopped = true;
+                this.interruptedDuringResponse = true;
+                
                 this.emergencyStopSpeech();
                 this.handleInterruption();
+                
+                // 🔄 Don't clear transcript during interruption - let natural processing handle it
+                console.log('🔄 Skipping transcript clear during interruption - letting natural flow handle it (backup)');
                 return;
             }
             
@@ -685,8 +728,16 @@ class VoiceAssistant {
                 console.log(`🔍 BACKUP INTERRUPTION 2: "${interruptCheck}" (recent speech: ${Date.now() - this.speechStartTime}ms ago)`);
                 console.log('🛑 RECENT SPEECH INTERRUPTION DETECTED! Stopping...');
                 this.isSpeaking = true; // Fix the state
+                
+                // 🚫 CRITICAL: Set flags BEFORE calling emergencyStopSpeech to prevent TTS retry
+                this.speechEffectivelyStopped = true;
+                this.interruptedDuringResponse = true;
+                
                 this.emergencyStopSpeech();
                 this.handleInterruption();
+                
+                // 🔄 Don't clear transcript during interruption - let natural processing handle it
+                console.log('🔄 Skipping transcript clear during interruption - letting natural flow handle it (recent speech)');
                 return;
             }
             
@@ -695,8 +746,16 @@ class VoiceAssistant {
                 console.log(`🔍 BACKUP INTERRUPTION 3: "${interruptCheck}" (currentUtterance exists)`);
                 console.log('🛑 UTTERANCE-BASED INTERRUPTION DETECTED! Stopping...');
                 this.isSpeaking = true; // Fix the state
+                
+                // 🚫 CRITICAL: Set flags BEFORE calling emergencyStopSpeech to prevent TTS retry
+                this.speechEffectivelyStopped = true;
+                this.interruptedDuringResponse = true;
+                
                 this.emergencyStopSpeech();
                 this.handleInterruption();
+                
+                // 🔄 Don't clear transcript during interruption - let natural processing handle it
+                console.log('🔄 Skipping transcript clear during interruption - letting natural flow handle it (utterance-based)');
                 return;
             }
             
@@ -713,9 +772,17 @@ class VoiceAssistant {
     }
     
     containsWakeWord(transcript) {
-        const wakeWords = ['jarvis', 'hey jarvis'];
-        const detected = wakeWords.some(word => transcript.includes(word));
-        console.log(`Simple wake word check: "${transcript}" -> ${detected}`);
+        // 🚀 ULTRA-RESPONSIVE: More aggressive wake word patterns
+        const wakeWords = ['jarvis', 'hey jarvis', 'javi', 'jar', 'jarv'];
+        const normalizedTranscript = transcript.toLowerCase().trim();
+        
+        const detected = wakeWords.some(word => 
+            normalizedTranscript.includes(word) || 
+            normalizedTranscript.startsWith(word) ||
+            normalizedTranscript.endsWith(word)
+        );
+        
+        console.log(`🚀 Ultra-responsive wake word check: "${transcript}" -> ${detected}`);
         return detected;
     }
     
@@ -795,10 +862,10 @@ class VoiceAssistant {
      * Enhanced command processing with better preprocessing
      */
     async processCommand(command) {
-        // Reduced debouncing: prevent commands within 1 second of each other
+        // Ultra-responsive: very short debouncing for immediate response  
         const now = Date.now();
-        if (now - this.lastCommandTime < 1000) {
-            console.log('🚫 Command ignored due to debouncing (1 second cooldown)');
+        if (now - this.lastCommandTime < 200) { // Reduced to 200ms for much better responsiveness
+            console.log('🚫 Command ignored due to debouncing (200ms cooldown)');
             return;
         }
         
@@ -998,15 +1065,16 @@ class VoiceAssistant {
         } finally {
             this.isProcessing = false;
             this.processingLock = false;
-            this.isSpeaking = false; // Always reset speaking flag
+            // 🔧 DON'T reset isSpeaking here - speech synthesis might be starting
+            // this.isSpeaking = false; // Always reset speaking flag
             this.lastTranscript = ''; // Clear transcript after processing
             console.log('✅ Command processing completed - all state reset');
            
-            // Restart listening after processing completes
+            // 🚀 ULTRA-RESPONSIVE: Immediate restart for faster wake word detection
             setTimeout(async () => {
                 console.log('🔄 Auto-restarting listening after command processing');
                 await this.resetProcessingState(true);
-            }, 500); // Small delay to allow TTS to start if needed
+            }, 100); // Minimal delay for maximum responsiveness
 
         }
     }
@@ -1416,9 +1484,21 @@ class VoiceAssistant {
             
             // Handle different error types
             if (event.error === 'interrupted' || event.error === 'canceled') {
+                // 🚫 ABSOLUTE SAFETY: DON'T RETRY if ANY interruption flag is set
+                if (this.speechEffectivelyStopped || this.interruptedDuringResponse || 
+                    this.lastInterruptionTime && (Date.now() - this.lastInterruptionTime < 5000)) {
+                    console.log('🚫 TTS canceled due to user interruption - ABSOLUTELY NOT retrying');
+                    console.log(`   - speechEffectivelyStopped: ${this.speechEffectivelyStopped}`);
+                    console.log(`   - interruptedDuringResponse: ${this.interruptedDuringResponse}`);
+                    console.log(`   - recent interruption: ${this.lastInterruptionTime ? Date.now() - this.lastInterruptionTime : 'none'}ms ago`);
+                    this.isSpeaking = false;
+                    this.synthesisLock = false;
+                    return; // Exit without retry
+                }
+                
                 console.log('🔄 TTS was interrupted, attempting retry...');
                 // Clear the speaking flag but keep synthesis lock during retry
-            this.isSpeaking = false;
+                this.isSpeaking = false;
                 setTimeout(() => {
                     if (!this.synthesis.speaking) {
                         console.log('🔄 Retrying TTS after interruption...');
@@ -1589,9 +1669,9 @@ class VoiceAssistant {
         const interruptionTime = Date.now() - this.speechStartTime;
         console.log(`🛑 GRACEFUL INTERRUPTION - Smoothly stopping speech (${interruptionTime}ms into speech)`);
         
-        // Prevent spam interruptions
-        if (Date.now() - this.lastInterruptionTime < this.config.interruptionCooldown) {
-            console.log('🚫 Ignoring rapid interruption attempts');
+        // Prevent spam interruptions with longer cooldown
+        if (Date.now() - this.lastInterruptionTime < 2000) { // 2 second cooldown
+            console.log('🚫 Ignoring rapid interruption attempts (2s cooldown)');
             return;
         }
         this.lastInterruptionTime = Date.now();
@@ -1628,16 +1708,37 @@ class VoiceAssistant {
         this.synthesisLock = false;
         this.allowInterruption = true; // Keep enabled for next response
         
-        // Set up for new command - be more conservative
+        // 🔄 COMPLETE STATE RESET for new command
         this.wakeWordDetected = true;
-        this.lastTranscript = '';
+        // Don't clear transcript immediately - delay it to let user finish new command
         this.lastWakeWordTime = Date.now();
         
-        // Clear any existing timeouts
+        // 🧹 CLEAR TRANSCRIPT ACCUMULATION to prevent "Jarvis Jarvis what is" concatenation
+        if (this.recognition && this.recognition.onresult) {
+            console.log('🧹 Resetting recognition transcript accumulation');
+        }
+        
+        // 🧹 CLEAR ALL COMMAND PROCESSING STATE
+        this.isProcessing = false;
+        this.processingLock = false;
+        this.lastProcessTime = 0;
+        this.currentCommandText = '';
+        
+        // Clear ALL timeouts and intervals
         if (this.commandTimeout) {
             clearTimeout(this.commandTimeout);
             this.commandTimeout = null;
         }
+        if (this.processingTimeout) {
+            clearTimeout(this.processingTimeout);
+            this.processingTimeout = null;
+        }
+        if (this.transcriptThrottleTimeout) {
+            clearTimeout(this.transcriptThrottleTimeout);
+            this.transcriptThrottleTimeout = null;
+        }
+        
+        console.log('🧹 COMPLETE processing state cleared for new command');
         
         // Update UI immediately
         if (this.onStatusChange) {
@@ -1656,23 +1757,41 @@ class VoiceAssistant {
         console.log('🎭 Stealth mode: New speech can start immediately while old speech is muted');
         
         // DON'T restart recognition automatically - keep existing recognition running
-        // This prevents microphone permission issues
+        // This prevents microphone permission issues and "already started" errors
         console.log('🎤 Keeping existing recognition active after interruption');
         
-        // Set up auto-reset timeout for new command
+        // 🔧 FIX: Ensure recognition is actually running and healthy
+        if (!this.isListening || !this.recognition) {
+            console.log('🔧 Recognition not running after interruption - safely restarting');
+            setTimeout(() => {
+                if (!this.isListening) {
+                    this.startListening();
+                }
+            }, 1000); // Delay restart to avoid conflicts
+        }
+        
+        // Set up auto-reset timeout for new command (much longer delay after interruption)
         this.commandTimeout = setTimeout(() => {
+            // Only reset if user hasn't provided a meaningful command
             if (this.wakeWordDetected && !this.isProcessing && !this.processingLock &&
                 this.lastTranscript.length < 3) {
-                console.log('🔄 Auto-resetting after interruption timeout');
+                console.log('🔄 Auto-resetting after interruption timeout - no command received');
                 this.resetToIdleState();
+            } else {
+                console.log('🔄 Interruption timeout reached but user is active - NOT resetting');
             }
-        }, 6000); // Shorter timeout (6 seconds)
+        }, 20000); // Much longer timeout (20 seconds) for interruption recovery
         
-        // Reset the interruption flag after a short delay
+        // Reset the interruption flag after a short delay (but don't clear transcripts yet)
         setTimeout(() => {
             this.interruptedDuringResponse = false;
-            console.log('✅ Graceful interruption complete - ready for new command');
-        }, 300);
+            
+            // 🔄 Keep wake word state active to ensure command capture continues
+            this.wakeWordDetected = true; // Keep in listening mode
+            this.lastWakeWordTime = Date.now(); // Reset wake word time
+            
+            console.log('✅ Graceful interruption complete - ready for new command (transcripts preserved for full command)');
+        }, 800); // Delay for recognition reset
     }
     
     /**
