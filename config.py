@@ -66,6 +66,9 @@ class Config:
     CLARIFICATION_ENABLED = os.getenv('CLARIFICATION_ENABLED', 'False').lower() == 'true'
     LEARNING_ENABLED = os.getenv('LEARNING_ENABLED', 'False').lower() == 'true'
     
+    # Transparent Response System (enabled by default - improves UX without risk)
+    TRANSPARENT_RESPONSES_ENABLED = os.getenv('TRANSPARENT_RESPONSES_ENABLED', 'True').lower() == 'true'
+    
     @classmethod
     def validate_config(cls):
         """Validate configuration settings"""

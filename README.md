@@ -17,6 +17,8 @@ A cutting-edge voice-activated AI assistant designed specifically for frontline 
 - 📊 **Real-time Database Queries**: Direct SQLite integration
 - 🛡️ **Offline Operation**: No internet dependency for core functions
 - 📱 **Web-Based**: Cross-platform browser compatibility
+- 🧠 **Transparent Responses**: AI-powered explanations replace "I don't know" messages
+- 🔍 **Enhanced Classification**: Smart query categorization with phrase detection
 
 ## 🏗️ System Architecture
 
@@ -234,7 +236,7 @@ curl -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "What is the status of flight UA2406?"}'
 
-# Test enhanced v2 API
+# Test enhanced v2 API with transparent responses
 curl -X POST http://localhost:3000/api/v2/query \
   -H "Content-Type: application/json" \
   -d '{
@@ -245,6 +247,16 @@ curl -X POST http://localhost:3000/api/v2/query \
       "include_debug": true
     }
   }'
+
+# Test transparent response system (empty results)
+curl -X POST http://localhost:3000/api/v2/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "staff on duty today", "language": "en"}'
+
+# Test transparent response system (SQL generation failure)  
+curl -X POST http://localhost:3000/api/v2/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "equipment status", "language": "en"}'
 ```
 
 ### 📊 Performance Analysis

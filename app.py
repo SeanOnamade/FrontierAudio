@@ -111,7 +111,7 @@ class AirportVoiceAssistant:
         except Exception as e:
             logger.error(f"Query execution error: {e}")
             return None
-
+    
     def _init_learning_database(self):
         """Initialize learning database table (feature-flagged)"""
         try:
@@ -658,7 +658,7 @@ Category:"""
         if not getattr(Config, 'ENHANCED_SCHEMA_ENABLED', False):
             # Fall back to original simple schema
             return "\n".join([f"Table: {table}, Columns: {', '.join(columns)}" 
-                             for table, columns in schema.items()])
+                                   for table, columns in schema.items()])
         
         # Get dynamic values and smart mappings
         dynamic_values = self._get_dynamic_status_values()
@@ -1093,6 +1093,281 @@ Make the response natural for voice output but don't omit important details. Use
             logger.error(f"Response formatting error: {e}")
             return "I found some information but had trouble formatting the response."
     
+    def generate_transparent_explanation(self, sql_query, schema, user_query, results_count, classification_method, language='en'):
+        """Use AI to generate human-friendly explanation of what the query attempted"""
+        from config import Config
+        
+        if not getattr(Config, 'TRANSPARENT_RESPONSES_ENABLED', True):
+            return None
+            
+        try:
+            # Create context-aware explanation prompt
+            if sql_query == "NO_DATA":
+                # Handle SQL generation failure
+                explanation_prompts = {
+                    'en': f"""A user asked: "{user_query}"
+
+I classified this as a {classification_method} query, but I had trouble understanding exactly what information to look for in the database.
+
+Database context: {self._get_schema_summary(schema)}
+
+Please explain in conversational, helpful language:
+1. What I think the user was trying to find
+2. Why I had difficulty understanding their request
+3. Suggest 2-3 more specific questions they could ask instead
+
+Be friendly and specific, avoid technical jargon. Help them rephrase their question more clearly.""",
+
+                    'es': f"""Un usuario preguntó: "{user_query}"
+
+Clasifiqué esto como una consulta de {classification_method}, pero tuve problemas para entender exactamente qué información buscar en la base de datos.
+
+Contexto de la base de datos: {self._get_schema_summary(schema)}
+
+Por favor explica en lenguaje conversacional y útil:
+1. Qué creo que el usuario estaba tratando de encontrar
+2. Por qué tuve dificultades para entender su solicitud
+3. Sugiere 2-3 preguntas más específicas que podrían hacer
+
+Sé amigable y específico, evita la jerga técnica.""",
+
+                    'fr': f"""Un utilisateur a demandé: "{user_query}"
+
+J'ai classé cela comme une requête {classification_method}, mais j'ai eu du mal à comprendre exactement quelles informations chercher dans la base de données.
+
+Contexte de la base de données: {self._get_schema_summary(schema)}
+
+Veuillez expliquer dans un langage conversationnel et utile:
+1. Ce que je pense que l'utilisateur essayait de trouver
+2. Pourquoi j'ai eu des difficultés à comprendre leur demande
+3. Suggérez 2-3 questions plus spécifiques qu'ils pourraient poser
+
+Soyez amical et spécifique, évitez le jargon technique."""
+                }
+            else:
+                # Handle normal query with results
+                explanation_prompts = {
+                    'en': f"""A user asked: "{user_query}"
+
+I classified this as a {classification_method} query and generated this SQL:
+{sql_query}
+
+Database context: {self._get_schema_summary(schema)}
+
+Results: {results_count} rows found
+
+Please explain in conversational, helpful language:
+1. What I tried to find for the user
+2. Why it might have {('succeeded' if results_count > 0 else 'failed')} 
+3. Suggest 2-3 alternative questions they could ask
+
+Be friendly and specific, avoid technical jargon. Help them understand what happened and what they could try instead.""",
+
+                    'es': f"""Un usuario preguntó: "{user_query}"
+
+Clasifiqué esto como una consulta de {classification_method} y generé este SQL:
+{sql_query}
+
+Contexto de la base de datos: {self._get_schema_summary(schema)}
+
+Resultados: {results_count} filas encontradas
+
+Por favor explica en lenguaje conversacional y útil:
+1. Qué traté de encontrar para el usuario
+2. Por qué podría haber {('tenido éxito' if results_count > 0 else 'fallado')}
+3. Sugiere 2-3 preguntas alternativas que podrían hacer
+
+Sé amigable y específico, evita la jerga técnica.""",
+
+                    'fr': f"""Un utilisateur a demandé: "{user_query}"
+
+J'ai classé cela comme une requête {classification_method} et généré ce SQL:
+{sql_query}
+
+Contexte de la base de données: {self._get_schema_summary(schema)}
+
+Résultats: {results_count} lignes trouvées
+
+Veuillez expliquer dans un langage conversationnel et utile:
+1. Ce que j'ai essayé de trouver pour l'utilisateur  
+2. Pourquoi cela aurait pu {('réussir' if results_count > 0 else 'échouer')}
+3. Suggérez 2-3 questions alternatives qu'ils pourraient poser
+
+Soyez amical et spécifique, évitez le jargon technique."""
+                }
+            
+            prompt = explanation_prompts.get(language, explanation_prompts['en'])
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=250,
+                temperature=0.4
+            )
+            
+            explanation = response.choices[0].message.content.strip()
+            logger.info(f"🔍 TRANSPARENT EXPLANATION GENERATED for query: {user_query}")
+            return explanation
+            
+        except Exception as e:
+            logger.error(f"❌ Transparent explanation generation failed: {e}")
+            return None
+    
+    def _get_schema_summary(self, schema):
+        """Create a brief, user-friendly summary of relevant database tables"""
+        try:
+            if not schema:
+                return "airport operations database"
+                
+            # Extract table names and create friendly summary
+            tables = []
+            if 'flights' in str(schema).lower():
+                tables.append('flight information')
+            if 'employee' in str(schema).lower() or 'personnel' in str(schema).lower():
+                tables.append('employee data')  
+            if 'equipment' in str(schema).lower():
+                tables.append('equipment tracking')
+            if 'gate' in str(schema).lower():
+                tables.append('gate assignments')
+                
+            if tables:
+                return f"database with {', '.join(tables)}"
+            else:
+                return "airport operations database"
+                
+        except Exception:
+            return "airport operations database"
+    
+    def format_response_with_transparency(self, data, original_query, sql_query, schema, classification_method, language='en'):
+        """Enhanced response formatting with optional transparent explanations"""
+        from config import Config
+        
+        # If transparent responses disabled, use original format_response
+        if not getattr(Config, 'TRANSPARENT_RESPONSES_ENABLED', True):
+            return self.format_response(data, original_query, language)
+        
+        results_count = len(data) if data else 0
+        
+        # Generate AI explanation for problematic cases
+        needs_explanation = (
+            results_count == 0 or  # No results found
+            results_count > 1000   # Too many results
+        )
+        
+        if needs_explanation:
+            explanation = self.generate_transparent_explanation(
+                sql_query, schema, original_query, results_count, classification_method, language
+            )
+            
+            if explanation:
+                # For too many results, add a summary
+                if results_count > 1000:
+                    summary = self._create_large_result_summary(data, sql_query)
+                    return f"{explanation}\n\n{summary}"
+                else:
+                    return explanation
+        
+        # For normal cases (1-1000 results), use standard formatting
+        return self.format_response(data, original_query, language)
+    
+    def _create_large_result_summary(self, data, sql_query):
+        """Create intelligent summary for large result sets"""
+        try:
+            if not data:
+                return "No summary available."
+                
+            total_count = len(data)
+            
+            # Equipment-specific summary
+            if "equipment" in sql_query.lower():
+                return self._summarize_equipment_data(data, total_count)
+            
+            # Flight-specific summary  
+            elif "flight" in sql_query.lower():
+                return self._summarize_flight_data(data, total_count)
+                
+            # Employee-specific summary
+            elif "employee" in sql_query.lower() or "personnel" in sql_query.lower():
+                return self._summarize_employee_data(data, total_count)
+            
+            # Generic summary
+            else:
+                sample_size = min(5, total_count)
+                return f"Here are the first {sample_size} of {total_count} results: {str(data[:sample_size])[:200]}..."
+                
+        except Exception as e:
+            logger.error(f"Summary generation error: {e}")
+            return f"Found {len(data)} results (too many to display all at once)."
+    
+    def _summarize_equipment_data(self, data, total_count):
+        """Summarize equipment data by type and status"""
+        try:
+            # Count by equipment type
+            types = {}
+            statuses = {}
+            
+            for row in data[:100]:  # Sample first 100 for performance
+                eq_type = str(row.get('equipment_type', 'Unknown')).strip()
+                eq_status = str(row.get('equipment_status', 'Unknown')).strip()
+                
+                types[eq_type] = types.get(eq_type, 0) + 1
+                statuses[eq_status] = statuses.get(eq_status, 0) + 1
+            
+            # Format summary
+            top_types = sorted(types.items(), key=lambda x: x[1], reverse=True)[:3]
+            top_statuses = sorted(statuses.items(), key=lambda x: x[1], reverse=True)[:3]
+            
+            summary = f"Summary of {total_count} equipment items:\n"
+            summary += f"Top types: {', '.join([f'{count} {type}' for type, count in top_types])}\n"
+            summary += f"Status breakdown: {', '.join([f'{count} {status}' for status, count in top_statuses])}"
+            
+            return summary
+            
+        except Exception:
+            return f"Found {total_count} equipment items (summary unavailable)."
+    
+    def _summarize_flight_data(self, data, total_count):
+        """Summarize flight data by status and airline"""
+        try:
+            statuses = {}
+            airlines = {}
+            
+            for row in data[:100]:  # Sample for performance
+                status = str(row.get('flight_status', 'Unknown')).strip()
+                airline = str(row.get('airline_code', 'Unknown')).strip()
+                
+                statuses[status] = statuses.get(status, 0) + 1
+                airlines[airline] = airlines.get(airline, 0) + 1
+            
+            top_statuses = sorted(statuses.items(), key=lambda x: x[1], reverse=True)[:3]
+            
+            summary = f"Summary of {total_count} flights:\n"
+            summary += f"Status breakdown: {', '.join([f'{count} {status}' for status, count in top_statuses])}"
+            
+            return summary
+            
+        except Exception:
+            return f"Found {total_count} flights (summary unavailable)."
+    
+    def _summarize_employee_data(self, data, total_count):
+        """Summarize employee data by role and department"""
+        try:
+            roles = {}
+            
+            for row in data[:100]:  # Sample for performance
+                role = str(row.get('role_name', row.get('position', 'Unknown'))).strip()
+                roles[role] = roles.get(role, 0) + 1
+            
+            top_roles = sorted(roles.items(), key=lambda x: x[1], reverse=True)[:3]
+            
+            summary = f"Summary of {total_count} employee records:\n"
+            summary += f"Top roles: {', '.join([f'{count} {role}' for role, count in top_roles])}"
+            
+            return summary
+            
+        except Exception:
+            return f"Found {total_count} employee records (summary unavailable)."
+    
     def detect_language(self, text):
         """Simple language detection based on common words"""
         spanish_words = ['que', 'cual', 'donde', 'cuando', 'como', 'vuelo', 'estado', 'equipo', 'personal']
@@ -1477,11 +1752,19 @@ Make the response natural for voice output but don't omit important details. Use
             sql_query = sql_result
             classification_method = "unknown"
         if not sql_query:
+            # Generate transparent explanation for SQL generation failure
+            explanation = self.generate_transparent_explanation(
+                "NO_DATA", schema, user_query, 0, classification_method, language
+            )
+            
+            response_text = explanation if explanation else messages['parse_error']
+            
             return {
-                "response": messages['parse_error'],
+                "response": response_text,
                 "confidence": 0.0,
                 "latency": time.time() - start_time,
-                "language": language
+                "language": language,
+                "classification_method": classification_method
             }
         
         # Execute query
@@ -1494,8 +1777,10 @@ Make the response natural for voice output but don't omit important details. Use
                 "language": language
             }
         
-        # Format response
-        response_text = self.format_response(results, user_query, language)
+        # Format response with optional transparency
+        response_text = self.format_response_with_transparency(
+            results, user_query, sql_query, schema, classification_method, language
+        )
         
         # Calculate confidence based on result quality
         confidence = 0.9 if results else 0.1
@@ -1614,15 +1899,30 @@ def process_voice_query():
         if session_id and result.get('response'):
             assistant.store_conversation_exchange(session_id, user_query, result['response'])
         
-        # Add confidence disclosure if needed (language-specific)
+        # Add confidence disclosure if needed (but skip if transparent explanation already provided)
         if result['confidence'] < assistant.confidence_threshold:
-            confidence_prefixes = {
-                'en': "I'm not entirely sure, but",
-                'es': "No estoy completamente seguro, pero",
-                'fr': "Je ne suis pas entièrement sûr, mais"
-            }
-            prefix = confidence_prefixes.get(result.get('language', 'en'), confidence_prefixes['en'])
-            result['response'] = f"{prefix} {result['response']}"
+            # Check if response already contains AI-generated transparent explanation
+            response_text = result.get('response', '')
+            has_transparent_explanation = (
+                len(response_text) > 200 and  # Transparent explanations are typically longer
+                any(phrase in response_text.lower() for phrase in [
+                    'what i tried to find', 'what i was trying to do', 'let me explain',
+                    'what i think the user was trying to find', 'what the user was trying to find',
+                    'alternative questions', 'you could try asking', 'you could ask',
+                    'suggest 2-3', 'here are some ways', 'you could rephrase',
+                    'i had trouble understanding', 'i had difficulty understanding',
+                    'absolutely, i\'d be happy to help clarify'
+                ])
+            )
+            
+            if not has_transparent_explanation:
+                confidence_prefixes = {
+                    'en': "I'm not entirely sure, but",
+                    'es': "No estoy completamente seguro, pero",
+                    'fr': "Je ne suis pas entièrement sûr, mais"
+                }
+                prefix = confidence_prefixes.get(result.get('language', 'en'), confidence_prefixes['en'])
+                result['response'] = f"{prefix} {result['response']}"
         
         return jsonify(result)
         
@@ -1882,15 +2182,30 @@ def process_voice_query_v2():
         if session_id and result.get('response'):
             assistant.store_conversation_exchange(session_id, user_query, result['response'])
         
-        # Add confidence disclosure if needed (same as v1)
+        # Add confidence disclosure if needed (but skip if transparent explanation already provided)
         if result['confidence'] < assistant.confidence_threshold:
-            confidence_prefixes = {
-                'en': "I'm not entirely sure, but",
-                'es': "No estoy completamente seguro, pero",
-                'fr': "Je ne suis pas entièrement sûr, mais"
-            }
-            prefix = confidence_prefixes.get(result.get('language', 'en'), confidence_prefixes['en'])
-            result['response'] = f"{prefix} {result['response']}"
+            # Check if response already contains AI-generated transparent explanation
+            response_text = result.get('response', '')
+            has_transparent_explanation = (
+                len(response_text) > 200 and  # Transparent explanations are typically longer
+                any(phrase in response_text.lower() for phrase in [
+                    'what i tried to find', 'what i was trying to do', 'let me explain',
+                    'what i think the user was trying to find', 'what the user was trying to find',
+                    'alternative questions', 'you could try asking', 'you could ask',
+                    'suggest 2-3', 'here are some ways', 'you could rephrase',
+                    'i had trouble understanding', 'i had difficulty understanding',
+                    'absolutely, i\'d be happy to help clarify'
+                ])
+            )
+            
+            if not has_transparent_explanation:
+                confidence_prefixes = {
+                    'en': "I'm not entirely sure, but",
+                    'es': "No estoy completamente seguro, pero",
+                    'fr': "Je ne suis pas entièrement sûr, mais"
+                }
+                prefix = confidence_prefixes.get(result.get('language', 'en'), confidence_prefixes['en'])
+                result['response'] = f"{prefix} {result['response']}"
         
         # Build enhanced v2 response
         total_time_ms = round((time.time() - start_time) * 1000, 2)
