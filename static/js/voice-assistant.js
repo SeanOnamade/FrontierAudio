@@ -42,7 +42,14 @@ class VoiceAssistant {
             maxAlternatives: 1,
             enableBiometrics: false,
             enableStressDetection: true,
-            autoLanguageDetection: false  // Disable auto language detection to stay in English
+            autoLanguageDetection: false,  // Disable auto language detection to stay in English
+            // 🔥 Enhanced interruption settings
+            interruptionEnabled: true,
+            interruptionSensitivity: 'high', // 'low', 'medium', 'high'
+            immediateInterruption: true, // Stop immediately on wake word
+            continueListeningDuringSpeech: true, // Keep recognition active during speech
+            maxInterruptionAttempts: 5, // How many times to try stopping speech
+            interruptionCooldown: 100, // Milliseconds between interruption attempts
         };
         
         // Aviation terminology normalization
@@ -77,6 +84,20 @@ class VoiceAssistant {
             }
         };
         
+        // Voice synthesis settings
+        this.voiceSettings = {
+            rate: 1.0,
+            pitch: 1.0,
+            volume: 1.0,
+            voice: null
+        };
+        
+        // Timing and throttling
+        this.lastTranscriptTime = 0;
+        this.transcriptThrottle = 100; // Minimum time between transcript processing
+        this.lastProcessTime = 0;
+        this.processThrottle = 1000; // Minimum time between command processing
+        
         // Callbacks
         this.onStatusChange = null;
         this.onListeningChange = null;
@@ -87,13 +108,19 @@ class VoiceAssistant {
         this.onUserAuthenticated = null;
         this.onStressDetected = null;
         this.onQueryReceived = null;
+        this.onInterruption = null; // New callback for interruption events
         
-        // 🔥 INTERRUPTION FEATURE: New interruption-related flags
-        this.allowInterruption = false; // Allow wake word detection during speech
+        // 🔥 ENHANCED INTERRUPTION FEATURES
+        this.allowInterruption = true; // Always allow interruption by default
         this.currentUtterance = null; // Store current speech utterance for interruption
         this.interruptedDuringResponse = false; // Track if response was interrupted
         this.interruptionCheckInterval = null; // Periodic check for interruption during speech
         this.speechBlocked = false; // Global flag to block all speech synthesis
+        this.speechEffectivelyStopped = false; // Track if speech is muted but still running
+        this.interruptionAttempts = 0; // Count interruption attempts
+        this.lastInterruptionTime = 0; // Track last interruption to prevent spam
+        this.speechStartTime = 0; // Track when speech started
+        this.activeInterruptionListening = false; // Special listening mode during speech
         
         this.init();
     }
@@ -461,92 +488,35 @@ class VoiceAssistant {
         // Debug: Show current mode
         console.log(`🔍 Transcript received: "${transcript}" | Mode: ${this.wakeWordDetected ? 'COMMAND_LISTENING' : 'WAKE_WORD_DETECTION'} | Final: ${isFinal}`);
         
-        // 🔥 ULTRA-FAST INTERRUPTION: Check for "jarvis" on ALL results (even interim) when speaking
-        if (this.isSpeaking && this.allowInterruption) {
-            const ultraQuickCheck = transcript.toLowerCase();
-            // 🚨 HYPER-SENSITIVE: Detect even the tiniest sound that could be "jarvis"
-            if (ultraQuickCheck.includes('jarv') || ultraQuickCheck.includes('jar') || 
-                ultraQuickCheck.includes('jav') || ultraQuickCheck.includes('ja') || 
-                ultraQuickCheck.includes('j') || ultraQuickCheck.includes('har') ||
-                ultraQuickCheck.includes('arv') || ultraQuickCheck.includes('rvis') ||
-                ultraQuickCheck.includes('vis') || ultraQuickCheck.includes('is')) {
-                console.log('🚨🚨 HYPER-SENSITIVE INTERRUPTION on:', ultraQuickCheck);
-                // NUCLEAR OPTION: Stop everything immediately
-                this.emergencyStopSpeech();
-                this.handleInterruption();
-                return; // Exit immediately
-            }
-        }
-        
-        // Allow wake word detection on both interim and final results for faster response
-        // 🔥 INTERRUPTION FEATURE: Also allow wake word detection during speech (allowInterruption)
-        if ((!this.wakeWordDetected && !this.isProcessing && !this.processingLock && (!this.isSpeaking || this.allowInterruption) &&
-            timeSinceLastWakeWord > this.globalCooldown) || 
-            (this.allowInterruption && this.isSpeaking)) {
+        // 🔥 SIMPLE & RELIABLE: Normal wake word detection first
+        if (!this.wakeWordDetected && !this.isProcessing && !this.processingLock && 
+            timeSinceLastWakeWord > this.globalCooldown) {
             let wakeWordDetected = false;
             
-            console.log(`🔍 Checking wake word in result: "${transcript}"`);
+            console.log(`🔍 Checking for wake word in: "${transcript}" (Normal mode)`);
             
-            // 🔥 SUPER AGGRESSIVE INTERRUPTION: Check immediately if we're speaking
-            if (this.isSpeaking && this.allowInterruption && transcript.length > 0) {
-                const quickInterruptCheck = transcript.toLowerCase().trim();
-                if (quickInterruptCheck.includes('jarvis') || quickInterruptCheck.includes('javi') || quickInterruptCheck.includes('jar') || quickInterruptCheck.includes('j')) {
-                    console.log('🚨 IMMEDIATE INTERRUPTION DETECTED! Cancelling speech NOW!');
-                    // NUCLEAR OPTION: Use emergency stop
-                    this.emergencyStopSpeech();
-                    this.handleInterruption();
-                    return; // Exit immediately to stop current response
+            // Simple wake word detection first (for normal idle state)
+            if (transcript.length > 1) {
+                const simpleCheck = transcript.toLowerCase().trim();
+                if (simpleCheck.includes('jarvis') || simpleCheck.endsWith('jarvis') || simpleCheck === 'jarvis') {
+                    console.log('✅ WAKE WORD DETECTED! Jarvis activated');
+                    wakeWordDetected = true;
                 }
             }
-            
-            // Check for wake word with minimal text length for faster detection
-            if (transcript.length > 1) { // Reduced from 2 to 1 for even faster detection
-                // INSTANT wake word check for common variations
-                const quickCheck = transcript.toLowerCase().trim();
-                if (quickCheck === 'jarvis' || quickCheck.endsWith('jarvis') || quickCheck.includes('jarvis')) {
-                    console.log('🚀 INSTANT wake word detected!');
-                    wakeWordDetected = true;
-                    
-                    // 🔥 INTERRUPTION FEATURE: If we're speaking, this is an interruption!
-                    if (this.isSpeaking && this.allowInterruption) {
-                        console.log('🛑 INTERRUPTION DETECTED! Stopping current speech...');
-                        this.emergencyStopSpeech();
-                        this.handleInterruption();
-                        return; // Exit early, handleInterruption will manage the flow
-                    }
+        
+            // Enhanced wake word detection if simple didn't work
+            if (!wakeWordDetected && this.enhancedWakeWordDetector) {
+                console.log('🔍 Using enhanced wake word detector...');
+                const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
+                wakeWordDetected = wakeWordResult.detected;
+                if (wakeWordDetected) {
+                    console.log('✅ Enhanced wake word detected!', wakeWordResult);
                 }
-                
-                if (!wakeWordDetected && this.enhancedWakeWordDetector) {
-                    console.log('Using enhanced wake word detector...');
-                    const wakeWordResult = this.enhancedWakeWordDetector.detect(transcript, isFinal);
-                    wakeWordDetected = wakeWordResult.detected;
-                    console.log('Enhanced wake word result:', wakeWordResult);
-                    if (wakeWordDetected) {
-                        console.log('✅ Enhanced wake word detected!', wakeWordResult);
-                        
-                        // 🔥 INTERRUPTION FEATURE: Handle interruption for enhanced detection too
-                        if (this.isSpeaking && this.allowInterruption) {
-                            console.log('🛑 ENHANCED INTERRUPTION DETECTED! Stopping current speech...');
-                            this.emergencyStopSpeech();
-                            this.handleInterruption();
-                            return;
-                        }
-                    }
-                } else if (!wakeWordDetected) {
-                    console.log('Using simple wake word detection...');
-                    // Fallback to simple wake word detection
-                    wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
-                    if (wakeWordDetected) {
-                        console.log('✅ Simple wake word detected!');
-                        
-                        // 🔥 INTERRUPTION FEATURE: Handle interruption for simple detection too
-                        if (this.isSpeaking && this.allowInterruption) {
-                            console.log('🛑 SIMPLE INTERRUPTION DETECTED! Stopping current speech...');
-                            this.emergencyStopSpeech();
-                            this.handleInterruption();
-                            return;
-                        }
-                    }
+            } else if (!wakeWordDetected) {
+                // Fallback detection
+                wakeWordDetected = this.containsWakeWord(transcript.toLowerCase());
+                if (wakeWordDetected) {
+                    console.log('✅ Fallback wake word detected!');
                 }
             }
             
@@ -683,6 +653,61 @@ class VoiceAssistant {
                         console.log('🚫 Timeout processing skipped - already processed or invalid state');
                     }
                 }, 2000); // Process after 2 seconds of silence
+            }
+        }
+        
+        // 🔥 ROBUST INTERRUPTION CHECK: Multiple fallback conditions
+        if (transcript.length > 0) {
+            const interruptCheck = transcript.toLowerCase().trim();
+            const hasInterruptWord = interruptCheck.includes('jarvis') || interruptCheck.includes('javi') || interruptCheck.includes('jar');
+            
+            // PRIMARY CHECK: Normal speech state
+            if (this.isSpeaking && this.allowInterruption && hasInterruptWord) {
+                console.log(`🔍 PRIMARY INTERRUPTION: "${interruptCheck}" (isSpeaking=${this.isSpeaking})`);
+                console.log('🛑 INTERRUPTION DETECTED! Stopping current speech...');
+                this.emergencyStopSpeech();
+                this.handleInterruption();
+                return; // Exit immediately
+            }
+            
+            // BACKUP CHECK 1: Browser synthesis is still speaking even if our flag is wrong
+            if (this.synthesis.speaking && hasInterruptWord) {
+                console.log(`🔍 BACKUP INTERRUPTION 1: "${interruptCheck}" (synthesis.speaking=${this.synthesis.speaking})`);
+                console.log('🛑 BACKUP INTERRUPTION DETECTED! Stopping current speech...');
+                this.isSpeaking = true; // Fix the state
+                this.emergencyStopSpeech();
+                this.handleInterruption();
+                return;
+            }
+            
+            // BACKUP CHECK 2: Recent speech start (within last 10 seconds)
+            if (hasInterruptWord && this.speechStartTime && (Date.now() - this.speechStartTime) < 10000) {
+                console.log(`🔍 BACKUP INTERRUPTION 2: "${interruptCheck}" (recent speech: ${Date.now() - this.speechStartTime}ms ago)`);
+                console.log('🛑 RECENT SPEECH INTERRUPTION DETECTED! Stopping...');
+                this.isSpeaking = true; // Fix the state
+                this.emergencyStopSpeech();
+                this.handleInterruption();
+                return;
+            }
+            
+            // BACKUP CHECK 3: Current utterance exists
+            if (hasInterruptWord && this.currentUtterance) {
+                console.log(`🔍 BACKUP INTERRUPTION 3: "${interruptCheck}" (currentUtterance exists)`);
+                console.log('🛑 UTTERANCE-BASED INTERRUPTION DETECTED! Stopping...');
+                this.isSpeaking = true; // Fix the state
+                this.emergencyStopSpeech();
+                this.handleInterruption();
+                return;
+            }
+            
+            // DEBUGGING: Log when we should interrupt but don't
+            if (hasInterruptWord) {
+                console.log(`❌ INTERRUPTION MISSED - Word detected but no conditions met:`);
+                console.log(`   - isSpeaking: ${this.isSpeaking}`);
+                console.log(`   - allowInterruption: ${this.allowInterruption}`);
+                console.log(`   - synthesis.speaking: ${this.synthesis.speaking}`);
+                console.log(`   - currentUtterance: ${!!this.currentUtterance}`);
+                console.log(`   - speechStartTime: ${this.speechStartTime} (${Date.now() - this.speechStartTime}ms ago)`);
             }
         }
     }
@@ -827,6 +852,33 @@ class VoiceAssistant {
         if (command.length === 0) {
             this.speak("I didn't hear your question. Please try again.");
             this.isProcessing = false;
+            return;
+        }
+        
+        // 🔥 ENHANCED VALIDATION: Prevent responses to garbled/incomplete input
+        const commandWords = command.trim().toLowerCase().split(/\s+/);
+        const meaningfulWords = commandWords.filter(word => 
+            word.length > 2 && 
+            !['jarvis', 'jarviss', 'jarvis.', 'jarvis?', 'jarvis!', 'jervis', 'jarvis:', 'javi', 'jar'].includes(word)
+        );
+        
+        // Require at least 2 meaningful words or 8+ characters total
+        if (meaningfulWords.length < 2 && command.length < 8) {
+            console.log('🚫 Command too short or meaningless - ignoring:', { command, meaningfulWords });
+            this.speak("I need a bit more information. Please ask your question again.");
+            await this.resetProcessingState();
+            return;
+        }
+        
+        // Check for repetitive wake words (like "Jarvis Jarvis")
+        const wakeWordCount = commandWords.filter(word => 
+            ['jarvis', 'jarviss', 'jarvis.', 'jarvis?', 'jarvis!', 'jervis', 'jarvis:', 'javi', 'jar'].includes(word)
+        ).length;
+        
+        if (wakeWordCount >= commandWords.length - 1) {
+            console.log('🚫 Command is mostly wake words - ignoring:', { command, wakeWordCount, totalWords: commandWords.length });
+            this.speak("I'm listening! Please ask your question.");
+            await this.resetProcessingState();
             return;
         }
         
@@ -1083,6 +1135,12 @@ class VoiceAssistant {
             return;
         }
         
+        // 🎭 STEALTH MODE: If previous speech is just muted, we can speak new content
+        if (this.speechEffectivelyStopped) {
+            console.log('🎭 Previous speech is muted - starting new speech for interruption response');
+            this.speechEffectivelyStopped = false; // Clear the flag
+        }
+        
         // Don't speak if no text or empty text
         if (!text || typeof text !== 'string' || text.trim().length === 0) {
             console.warn('🚫 No text to speak, skipping synthesis');
@@ -1093,13 +1151,30 @@ class VoiceAssistant {
         // Set synthesis lock to prevent interference
         this.synthesisLock = true;
         
-        // 🔥 NEW INTERRUPTION FEATURE: Keep wake word detection active during speech
-        // Instead of stopping all recognition, just set a flag to allow interruption
+        // 🔥 ENHANCED INTERRUPTION: Ensure recognition stays active during speech
         this.allowInterruption = true;
-        console.log('🎤 Keeping wake word detection active for interruption during speech');
+        this.activeInterruptionListening = true;
+        this.speechStartTime = Date.now();
+        
+        console.log('🎤 ENHANCED: Keeping voice recognition ACTIVE during speech for interruption');
+        console.log(`🎤 INTERRUPTION STATE: isSpeaking=${this.isSpeaking}, allowInterruption=${this.allowInterruption}, speechStartTime=${this.speechStartTime}`);
+        
+        // Ensure recognition is running for interruption detection
+        this.ensureRecognitionForInterruption();
+        
+        // 🎭 STEALTH MODE: If previous speech is muted, cancel it before starting new speech
+        if (this.speechEffectivelyStopped && this.synthesis.speaking) {
+            console.log('🎭 Cancelling muted background speech before starting new speech');
+            try {
+                this.synthesis.cancel();
+            } catch (error) {
+                console.log('Background speech cancellation failed:', error);
+            }
+            this.speechEffectivelyStopped = false;
+        }
         
         // Only cancel if there's actual speech happening to avoid conflicts
-        if (this.synthesis.speaking) {
+        if (this.synthesis.speaking && !this.speechEffectivelyStopped) {
             this.synthesis.cancel();
             // Small delay to allow cancellation to complete
             setTimeout(() => this.performSpeech(text), 150);
@@ -1109,15 +1184,57 @@ class VoiceAssistant {
         this.performSpeech(text);
     }
     
+    /**
+     * 🔥 GENTLE METHOD: Ensure speech recognition stays active during speech synthesis
+     */
+    ensureRecognitionForInterruption() {
+        if (!this.config.continueListeningDuringSpeech) {
+            return;
+        }
+        
+        // Only start recognition if it's completely inactive
+        if (!this.isListening && (!this.recognition || this.recognition.state === 'inactive')) {
+            console.log('🎤 Gently starting recognition for interruption detection');
+            this.startListening(true); // Force start with interruption mode
+        } else {
+            console.log('🎤 Recognition already active - keeping it running for interruption');
+        }
+        
+        // Set up gentle periodic check (less frequent to avoid interference)
+        if (this.interruptionCheckInterval) {
+            clearInterval(this.interruptionCheckInterval);
+        }
+        
+        this.interruptionCheckInterval = setInterval(() => {
+            if (this.isSpeaking && this.allowInterruption) {
+                // Only restart if recognition is completely dead
+                if (!this.isListening && (!this.recognition || this.recognition.state === 'inactive')) {
+                    console.log('🔄 Gently restarting recognition for interruption');
+                    this.startListening(true);
+                } else {
+                    console.log('🎤 Recognition still active during speech');
+                }
+            } else {
+                // Clear interval if not speaking
+                if (this.interruptionCheckInterval) {
+                    clearInterval(this.interruptionCheckInterval);
+                    this.interruptionCheckInterval = null;
+                    console.log('🔇 Clearing interruption check - not speaking');
+                }
+            }
+        }, 1000); // Check every 1000ms (less frequent)
+    }
+    
     performSpeech(text) {
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
+        utterance.rate = this.voiceSettings.rate;
+        utterance.pitch = this.voiceSettings.pitch;
+        utterance.volume = this.voiceSettings.volume;
         
-        // 🔥 INTERRUPTION FEATURE: Store current utterance for potential interruption
+        // 🔥 ENHANCED INTERRUPTION: Store current utterance and set up for interruption
         this.currentUtterance = utterance;
         this.interruptedDuringResponse = false;
+        this.isSpeaking = true;
         
         // Use language-specific voice if available
         if (this.languageManager) {
@@ -1332,131 +1449,152 @@ class VoiceAssistant {
     }
     
     /**
-     * 🚨 NUCLEAR OPTION: Emergency speech stop - use every possible method
+     * 🚀 NUCLEAR INTERRUPTION: Multiple aggressive methods to force speech to stop
      */
     emergencyStopSpeech() {
-        console.log('🚨 EMERGENCY SPEECH STOP - USING ALL METHODS!');
+        console.log('🚀 NUCLEAR INTERRUPTION - Using ALL methods to force speech stop!');
         
-        // Set global speech block immediately
-        this.speechBlocked = true;
+        this.interruptionAttempts++;
         
-        // 🔥 NUCLEAR METHOD 1: Immediate volume muting
+        // Log interruption for analytics/debugging
+        console.log(`🛑 Interruption attempt #${this.interruptionAttempts} at ${Date.now() - this.speechStartTime}ms into speech`);
+        
+        // 🚀 METHOD 1: Instant volume mute (appears to stop immediately)
         try {
             if (this.currentUtterance) {
                 this.currentUtterance.volume = 0;
+                this.currentUtterance.rate = 0.01; // Extremely slow
+                console.log('🔇 Volume muted to 0 and rate slowed dramatically!');
             }
         } catch (error) {
-            console.log('Volume muting failed:', error);
+            console.log('Volume/rate manipulation failed:', error);
         }
         
-        // 🔥 NUCLEAR METHOD 2: Multiple aggressive cancellations
-        for (let i = 0; i < 10; i++) {
-            try {
-                this.synthesis.cancel();
-                this.synthesis.pause();
-            } catch (error) {
-                // Continue even if errors
-            }
-        }
-        
-        // 🔥 NUCLEAR METHOD 3: Clear the synthesis queue entirely
+        // 🚀 METHOD 2: Text replacement (replace remaining text with silence)
         try {
-            // Force speech synthesis queue to be empty
-            const originalQueue = this.synthesis.pending;
-            const originalSpeaking = this.synthesis.speaking;
-            
-            // Brutally clear everything
-            this.synthesis.cancel();
-            
-            // Override synthesis temporarily to prevent new speech
-            const originalSpeak = this.synthesis.speak;
-            this.synthesis.speak = () => {
-                console.log('🚫 Speech blocked by nuclear override');
-            };
-            
-            // Restore speak function after delay
-            setTimeout(() => {
-                if (!this.speechBlocked) {
-                    this.synthesis.speak = originalSpeak;
-                }
-            }, 200);
-            
-        } catch (error) {
-            console.log('Queue manipulation failed:', error);
-        }
-        
-        // 🔥 NUCLEAR METHOD 4: Disable utterance event handlers immediately
-        if (this.currentUtterance) {
-            try {
-                this.currentUtterance.onend = null;
-                this.currentUtterance.onerror = null;
-                this.currentUtterance.onstart = null;
-                this.currentUtterance.onpause = null;
-                this.currentUtterance.onresume = null;
-                this.currentUtterance.onmark = null;
-                this.currentUtterance.onboundary = null;
-                
-                // Set volume to 0 as backup
-                this.currentUtterance.volume = 0;
-                this.currentUtterance.rate = 0.1; // Slow down to near stop
-            } catch (error) {
-                console.log('Utterance override failed:', error);
+            if (this.currentUtterance) {
+                this.currentUtterance.text = '.'; // Replace with minimal text
+                console.log('📝 Text replaced with minimal content');
             }
+        } catch (error) {
+            console.log('Text replacement failed:', error);
         }
         
-        // 🔥 NUCLEAR METHOD 5: Delayed forced cancellation waves
-        const cancelWave = () => {
+        // 🚀 METHOD 3: Immediate cancellation (multiple attempts)
+        for (let i = 0; i < 3; i++) {
             try {
                 this.synthesis.cancel();
                 this.synthesis.pause();
-                this.synthesis.cancel();
+                console.log(`🛑 Cancellation attempt ${i + 1} completed`);
             } catch (error) {
-                // Continue
+                console.log(`Cancellation attempt ${i + 1} failed:`, error);
             }
-        };
+        }
         
-        // Multiple cancellation waves
-        setTimeout(cancelWave, 1);
-        setTimeout(cancelWave, 5);
-        setTimeout(cancelWave, 10);
-        setTimeout(cancelWave, 25);
-        setTimeout(cancelWave, 50);
-        setTimeout(cancelWave, 100);
-        setTimeout(cancelWave, 150);
-        setTimeout(cancelWave, 200);
+        // 🚀 METHOD 4: Clear the queue completely
+        try {
+            while (this.synthesis.pending || this.synthesis.speaking) {
+                this.synthesis.cancel();
+            }
+            console.log('🧹 Speech queue cleared completely');
+        } catch (error) {
+            console.log('Queue clearing failed:', error);
+        }
         
-        // 🔥 NUCLEAR METHOD 6: Audio context manipulation (if available)
+        // 🚀 METHOD 5: Audio context manipulation (if available)
         try {
             if (window.AudioContext || window.webkitAudioContext) {
-                // Try to suspend audio context to stop all audio
-                if (window.audioContext && typeof window.audioContext.suspend === 'function') {
-                    window.audioContext.suspend().then(() => {
-                        setTimeout(() => {
-                            if (!this.speechBlocked) {
-                                window.audioContext.resume();
-                            }
-                        }, 100);
-                    });
-                }
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext.suspend().then(() => {
+                    console.log('🔇 Audio context suspended');
+                    setTimeout(() => {
+                        audioContext.resume().then(() => {
+                            console.log('🔊 Audio context resumed');
+                        });
+                    }, 100);
+                });
             }
         } catch (error) {
             console.log('Audio context manipulation failed:', error);
         }
         
-        // Reset all speech flags immediately
+        // 🚀 METHOD 6: Force event handlers to null
+        try {
+            if (this.currentUtterance) {
+                this.currentUtterance.onstart = null;
+                this.currentUtterance.onend = null;
+                this.currentUtterance.onerror = null;
+                this.currentUtterance.onpause = null;
+                this.currentUtterance.onresume = null;
+                this.currentUtterance.onmark = null;
+                this.currentUtterance.onboundary = null;
+                console.log('🔇 All utterance event handlers cleared');
+            }
+        } catch (error) {
+            console.log('Event handler clearing failed:', error);
+        }
+        
+        // Mark as completely stopped from user perspective
         this.isSpeaking = false;
+        this.speechEffectivelyStopped = true;
         this.synthesisLock = false;
         this.allowInterruption = false;
         this.currentUtterance = null;
         
-        console.log('✅ Emergency speech stop completed - NUCLEAR METHODS DEPLOYED');
+        console.log('🚀 NUCLEAR INTERRUPTION COMPLETED - Speech forcefully stopped!');
     }
     
     /**
-     * 🔥 NEW INTERRUPTION FEATURE: Handle voice interruption during speech synthesis
+     * 🔇 Handle speech end after interruption (cleanup after background speech finishes)
+     */
+    handleSpeechEndAfterInterruption() {
+        console.log('🔇 Cleaning up after background speech finished');
+        this.speechEffectivelyStopped = false;
+        this.currentUtterance = null;
+        this.activeInterruptionListening = false;
+        
+        // Clear interruption check interval
+        if (this.interruptionCheckInterval) {
+            clearInterval(this.interruptionCheckInterval);
+            this.interruptionCheckInterval = null;
+        }
+    }
+    
+    /**
+     * 🔥 NEW: Handle speech end gracefully
+     */
+    handleSpeechEnd() {
+        console.log('🔇 Speech synthesis ended');
+        this.isSpeaking = false;
+        this.synthesisLock = false;
+        this.currentUtterance = null;
+        this.activeInterruptionListening = false;
+        
+        // Clear interruption check interval
+        if (this.interruptionCheckInterval) {
+            clearInterval(this.interruptionCheckInterval);
+            this.interruptionCheckInterval = null;
+        }
+        
+        // Don't restart recognition if we were interrupted
+        if (!this.interruptedDuringResponse && !this.speechBlocked) {
+            console.log('🎤 Speech ended normally - keeping recognition active');
+        }
+    }
+    
+    /**
+     * 🔥 GRACEFUL INTERRUPTION FEATURE: Handle voice interruption during speech synthesis
      */
     handleInterruption() {
-        console.log('🛑 HANDLING VOICE INTERRUPTION - IMMEDIATE STOP!');
+        const interruptionTime = Date.now() - this.speechStartTime;
+        console.log(`🛑 GRACEFUL INTERRUPTION - Smoothly stopping speech (${interruptionTime}ms into speech)`);
+        
+        // Prevent spam interruptions
+        if (Date.now() - this.lastInterruptionTime < this.config.interruptionCooldown) {
+            console.log('🚫 Ignoring rapid interruption attempts');
+            return;
+        }
+        this.lastInterruptionTime = Date.now();
         
         // Clear interruption check interval immediately
         if (this.interruptionCheckInterval) {
@@ -1466,21 +1604,31 @@ class VoiceAssistant {
         
         // Set interruption flag to prevent normal restart behavior
         this.interruptedDuringResponse = true;
+        this.activeInterruptionListening = false;
         
-        // Emergency stop should already be called, but make sure
+        // Callback for interruption events
+        if (this.onInterruption) {
+            this.onInterruption({
+                interruptionTime: interruptionTime,
+                attempts: this.interruptionAttempts,
+                speechText: this.currentUtterance ? this.currentUtterance.text : null
+            });
+        }
+        
+        // Stealth speech stop (mute volume, should already be called)
         if (this.isSpeaking || this.synthesis.speaking) {
             this.emergencyStopSpeech();
         }
         
-        // Clear current utterance
-        this.currentUtterance = null;
+        // Don't clear currentUtterance immediately - let it finish muted in background
+        // this.currentUtterance = null; // Will be cleared when background speech finishes
         
-        // Reset speech-related flags IMMEDIATELY
-        this.isSpeaking = false;
+        // Reset speech-related flags IMMEDIATELY for user perspective
+        this.isSpeaking = false; // User thinks speech stopped
         this.synthesisLock = false;
-        this.allowInterruption = false;
+        this.allowInterruption = true; // Keep enabled for next response
         
-        // Set up for new command
+        // Set up for new command - be more conservative
         this.wakeWordDetected = true;
         this.lastTranscript = '';
         this.lastWakeWordTime = Date.now();
@@ -1493,56 +1641,66 @@ class VoiceAssistant {
         
         // Update UI immediately
         if (this.onStatusChange) {
-            const interruptMessage = this.languageManager ? 
-                this.languageManager.translate('wake_word_detected', { wake_word: 'Jarvis' }) :
-                'Interruption detected! Please say your command.';
+            const interruptMessage = 'Interruption detected! Listening for your new command...';
             this.onStatusChange(interruptMessage);
         }
         
         // Update modern UI
         if (window.modernJarvis) {
-            window.modernJarvis.updateBubbleState('processing');
-            window.modernJarvis.updateStatus('Interruption detected!', 'Listening for your new command...');
+            window.modernJarvis.updateBubbleState('listening');
+            window.modernJarvis.updateStatus('Interruption detected!', 'Say your new command...');
         }
         
-        // Unblock speech after a short delay to allow new commands
-        setTimeout(() => {
-            this.speechBlocked = false;
-            console.log('🔓 Speech unblocked - ready for new responses');
-        }, 100);
+        // 🎭 STEALTH MODE: Don't block speech - we can start new speech while old one is muted
+        // No speechBlocked = true here, allowing immediate new responses
+        console.log('🎭 Stealth mode: New speech can start immediately while old speech is muted');
         
-        // Set up auto-reset timeout for new command (longer timeout since user just interrupted)
+        // DON'T restart recognition automatically - keep existing recognition running
+        // This prevents microphone permission issues
+        console.log('🎤 Keeping existing recognition active after interruption');
+        
+        // Set up auto-reset timeout for new command
         this.commandTimeout = setTimeout(() => {
             if (this.wakeWordDetected && !this.isProcessing && !this.processingLock &&
-                this.lastTranscript.length < 5) { // More lenient threshold after interruption
-                console.log('🔄 Auto-resetting wake word detection after interruption timeout');
+                this.lastTranscript.length < 3) {
+                console.log('🔄 Auto-resetting after interruption timeout');
                 this.resetToIdleState();
             }
-        }, 8000); // Longer timeout (8 seconds) to give user time to formulate new question
+        }, 6000); // Shorter timeout (6 seconds)
         
-        // Ensure we're listening for the new command
-        console.log('🎤 Ready for new command after interruption');
-        
-        // Reset the interruption flag after a short delay to allow normal processing
+        // Reset the interruption flag after a short delay
         setTimeout(() => {
             this.interruptedDuringResponse = false;
-            console.log('✅ Interruption handling complete - ready for new command processing');
-        }, 500);
+            console.log('✅ Graceful interruption complete - ready for new command');
+        }, 300);
     }
     
     /**
-     * Reset system to idle state (used by interruption and normal flows)
+     * 🔥 ENHANCED: Reset system to idle state (used by interruption and normal flows)
      */
     resetToIdleState() {
+        console.log('🔄 Resetting to idle state after interruption');
+        
+        // Clear all interruption-related state
         this.wakeWordDetected = false;
         this.isProcessing = false;
         this.processingLock = false;
         this.synthesisLock = false;
         this.isSpeaking = false;
-        this.allowInterruption = false;
+        this.allowInterruption = true; // Keep enabled for next response
         this.interruptedDuringResponse = false;
         this.speechBlocked = false; // Clear speech block
+        this.speechEffectivelyStopped = false; // Clear stealth mute flag
+        this.activeInterruptionListening = false;
         this.lastTranscript = '';
+        this.currentUtterance = null;
+        this.interruptionAttempts = 0; // Reset attempts counter
+        
+        // Clear interruption check interval
+        if (this.interruptionCheckInterval) {
+            clearInterval(this.interruptionCheckInterval);
+            this.interruptionCheckInterval = null;
+        }
         
         const wakeWord = this.languageManager ? 
             this.languageManager.getWakeWords()[0] : 'Jarvis';
@@ -1566,11 +1724,16 @@ class VoiceAssistant {
         }
     }
     
-    async startListening() {
-        // Defensive check: Don't start if already processing or speaking
-        if (this.isProcessing || this.processingLock || this.synthesisLock || this.isSpeaking) {
-            console.warn('🚫 Cannot start listening - system is busy');
-            return false;
+    async startListening(forceInterruptionMode = false) {
+        // 🔥 ENHANCED: Allow starting in interruption mode even while speaking
+        if (!forceInterruptionMode) {
+            // Defensive check: Don't start if already processing or speaking (unless forced)
+            if (this.isProcessing || this.processingLock || this.synthesisLock || this.isSpeaking) {
+                console.warn('🚫 Cannot start listening - system is busy');
+                return false;
+            }
+        } else {
+            console.log('🚀 FORCE STARTING recognition for interruption mode while speaking');
         }
         
         // Use enhanced speech if available and provider is 'webspeech'
@@ -3298,5 +3461,72 @@ class VoiceAssistant {
             clearInterval(this.heartbeatInterval);
             this.heartbeatInterval = null;
         }
+    }
+    
+    /**
+     * 🔥 NEW: Configure interruption settings
+     */
+    configureInterruption(settings = {}) {
+        console.log('🔧 Configuring interruption settings:', settings);
+        
+        // Update configuration
+        if (settings.enabled !== undefined) {
+            this.config.interruptionEnabled = settings.enabled;
+        }
+        if (settings.sensitivity !== undefined) {
+            this.config.interruptionSensitivity = settings.sensitivity;
+        }
+        if (settings.immediateInterruption !== undefined) {
+            this.config.immediateInterruption = settings.immediateInterruption;
+        }
+        if (settings.continueListeningDuringSpeech !== undefined) {
+            this.config.continueListeningDuringSpeech = settings.continueListeningDuringSpeech;
+        }
+        
+        console.log('✅ Interruption configuration updated:', {
+            enabled: this.config.interruptionEnabled,
+            sensitivity: this.config.interruptionSensitivity,
+            immediate: this.config.immediateInterruption,
+            continueListen: this.config.continueListeningDuringSpeech
+        });
+    }
+    
+    /**
+     * 🔥 NEW: Test interruption functionality
+     */
+    testInterruption(testMessage = "This is a test message to demonstrate the interruption functionality. Say Jarvis to interrupt me while I'm speaking.") {
+        console.log('🧪 Testing interruption functionality...');
+        
+        // Ensure interruption is enabled
+        this.configureInterruption({ enabled: true, sensitivity: 'high' });
+        
+        // Speak test message
+        this.speak(testMessage);
+        
+        console.log('🎤 Interruption test started - say "Jarvis" to interrupt!');
+        
+        return {
+            message: "Interruption test started! Say 'Jarvis' while I'm speaking to test the interruption.",
+            settings: {
+                enabled: this.config.interruptionEnabled,
+                sensitivity: this.config.interruptionSensitivity
+            }
+        };
+    }
+    
+    /**
+     * 🔥 NEW: Get current interruption status
+     */
+    getInterruptionStatus() {
+        return {
+            enabled: this.config.interruptionEnabled,
+            sensitivity: this.config.interruptionSensitivity,
+            allowInterruption: this.allowInterruption,
+            isSpeaking: this.isSpeaking,
+            activeInterruptionListening: this.activeInterruptionListening,
+            interruptionAttempts: this.interruptionAttempts,
+            speechBlocked: this.speechBlocked,
+            timeSinceSpeechStart: this.speechStartTime ? Date.now() - this.speechStartTime : 0
+        };
     }
 } 
