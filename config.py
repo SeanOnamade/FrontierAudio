@@ -60,6 +60,12 @@ class Config:
     ENHANCED_SCHEMA_ENABLED = os.getenv('ENHANCED_SCHEMA_ENABLED', 'True').lower() == 'true'
     QUERY_CLASSIFICATION_ENABLED = os.getenv('QUERY_CLASSIFICATION_ENABLED', 'True').lower() == 'true'
     
+    # New Classification Enhancement Flags (disabled by default for safety)
+    ENHANCED_KEYWORDS_ENABLED = os.getenv('ENHANCED_KEYWORDS_ENABLED', 'False').lower() == 'true'
+    ENHANCED_PHRASES_ENABLED = os.getenv('ENHANCED_PHRASES_ENABLED', 'False').lower() == 'true'
+    CLARIFICATION_ENABLED = os.getenv('CLARIFICATION_ENABLED', 'False').lower() == 'true'
+    LEARNING_ENABLED = os.getenv('LEARNING_ENABLED', 'False').lower() == 'true'
+    
     @classmethod
     def validate_config(cls):
         """Validate configuration settings"""

@@ -44,6 +44,12 @@ class AirportVoiceAssistant:
         self.cache_timeout = 5 * 60  # 5 minutes cache
         self.smart_mappings_cache = {}
         
+        # Learning system initialization (feature-flagged)
+        from config import Config
+        self.learning_enabled = getattr(Config, 'LEARNING_ENABLED', False)
+        if self.learning_enabled:
+            self._init_learning_database()
+        
     def connect_db(self):
         """Connect to SQLite database"""
         try:
@@ -105,6 +111,125 @@ class AirportVoiceAssistant:
         except Exception as e:
             logger.error(f"Query execution error: {e}")
             return None
+
+    def _init_learning_database(self):
+        """Initialize learning database table (feature-flagged)"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Create learning table if it doesn't exist
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS query_learning (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_query TEXT NOT NULL,
+                    failed_classification TEXT,
+                    user_feedback TEXT,
+                    suggested_classification TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+            """)
+            
+            conn.commit()
+            conn.close()
+            logger.info("📚 LEARNING DATABASE: Initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Learning database initialization failed: {e}")
+            # Disable learning if database fails
+            self.learning_enabled = False
+
+    def _create_learning_opportunity(self, user_query, failed_classification=None):
+        """Create a learning opportunity entry (feature-flagged)"""
+        if not self.learning_enabled:
+            return None
+        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO query_learning (original_query, failed_classification)
+                VALUES (?, ?)
+            """, (user_query, failed_classification))
+            
+            learning_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"📝 LEARNING OPPORTUNITY: Created ID {learning_id}")
+            return learning_id
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create learning opportunity: {e}")
+            return None
+
+    def _should_request_clarification(self, result):
+        """Determine if clarification should be requested (feature-flagged)"""
+        from config import Config
+        if not getattr(Config, 'CLARIFICATION_ENABLED', False):
+            return False
+        
+        # Trigger clarification on common failure conditions
+        return (
+            result.get('sql_query') == 'NO_DATA' or
+            result.get('result_count', 0) == 0 or
+            result.get('confidence', 1.0) < 0.3
+        )
+
+    def _add_clarification_if_needed(self, result, user_query, classification_method=None):
+        """Add clarification request to result if needed (feature-flagged)"""
+        if not self._should_request_clarification(result):
+            return result
+        
+        # Create learning opportunity
+        learning_id = self._create_learning_opportunity(
+            user_query, 
+            classification_method
+        )
+        
+        # Add clarification to response
+        result['clarification'] = {
+            'message': 'I couldn\'t find what you were looking for. What type of information were you seeking?',
+            'options': [
+                {'value': 'flight_status', 'label': 'Flight Information (status, gates, delays)'},
+                {'value': 'personnel', 'label': 'Personnel Info (who works where, contacts)'},
+                {'value': 'equipment', 'label': 'Equipment Status (tractors, vehicles, availability)'},
+                {'value': 'location', 'label': 'Location Info (where things are located)'},
+                {'value': 'time', 'label': 'Time/Schedule Info (when things happen)'},
+                {'value': 'other', 'label': 'Other (please specify)'}
+            ],
+            'learning_id': learning_id
+        }
+        
+        logger.info(f"❓ CLARIFICATION REQUESTED: Learning ID {learning_id}")
+        return result
+
+    def _store_user_feedback(self, learning_id, user_feedback, suggested_classification):
+        """Store user feedback for learning (feature-flagged)"""
+        if not self.learning_enabled or not learning_id:
+            return False
+        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE query_learning 
+                SET user_feedback = ?, suggested_classification = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (user_feedback, suggested_classification, learning_id))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"💡 USER FEEDBACK STORED: Learning ID {learning_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to store user feedback: {e}")
+            return False
     
     # Legacy method - now replaced by _classify_query_type_with_fallback
 
@@ -158,19 +283,26 @@ Category:"""
             return 'general'
 
     def _classify_query_type_with_fallback(self, user_query):
-        """Smart classification: try keywords first, then AI fallback"""
+        """Smart classification with enhanced priority order"""
         from config import Config
         if not getattr(Config, 'QUERY_CLASSIFICATION_ENABLED', False):
             return 'general'
         
-        # Step 1: Try keyword-based classification (fast)
+        # Step 1: Try enhanced classification (phrases + enhanced keywords)
+        if (getattr(Config, 'ENHANCED_PHRASES_ENABLED', False) or 
+            getattr(Config, 'ENHANCED_KEYWORDS_ENABLED', False)):
+            enhanced_result = self._classify_query_enhanced(user_query)
+            if enhanced_result != 'general':
+                return enhanced_result
+        
+        # Step 2: Try original keyword-based classification (fast)
         keyword_result = self._classify_query_type_keywords(user_query)
         
         if keyword_result != 'general':
             logger.info(f"🔑 KEYWORD MATCH: {keyword_result}")
             return keyword_result
         
-        # Step 2: Use AI fallback for edge cases (slower but smarter)
+        # Step 3: Use AI fallback for edge cases (slower but smarter)
         logger.info(f"🤖 FALLBACK: Using AI classification for edge case")
         return self._classify_query_type_ai(user_query)
 
@@ -199,6 +331,127 @@ Category:"""
             return 'time'
         
         return 'general'
+
+    def _get_enhanced_keywords(self):
+        """Get enhanced keyword lists with synonyms (feature-flagged)"""
+        from config import Config
+        if not getattr(Config, 'ENHANCED_KEYWORDS_ENABLED', False):
+            return {}
+        
+        # Base keywords from existing logic + synonyms
+        return {
+            'flight_status': [
+                # Existing keywords
+                'status', 'flight', 'delayed', 'on time', 'departed', 'boarding',
+                # New synonyms
+                'aircraft', 'plane', 'jet', 'airliner', 'departure', 'arrival', 
+                'gate', 'late', 'punctual', 'schedule', 'timing'
+            ],
+            'equipment': [
+                # Existing keywords  
+                'equipment', 'tractor', 'pushback', 'assigned', 'available',
+                # New synonyms
+                'vehicle', 'machinery', 'device', 'tool', 'cart', 'loader', 
+                'generator', 'idle', 'free', 'busy', 'maintenance'
+            ],
+            'personnel': [
+                # Existing keywords
+                'who', 'employee', 'shift', 'contact', 'phone', 'cleaning lead',
+                # New synonyms
+                'staff', 'crew', 'team member', 'worker', 'agent', 'representative',
+                'supervisor', 'manager', 'captain', 'lead'
+            ],
+            'location': [
+                # Existing keywords
+                'where', 'gate', 'location', 'nearest', 'closest',
+                # New synonyms
+                'position', 'area', 'zone', 'terminal', 'concourse'
+            ],
+            'time': [
+                # Existing keywords  
+                'when', 'time', 'schedule', 'end', 'next',
+                # New synonyms
+                'start', 'begin', 'finish', 'duration', 'period'
+            ]
+        }
+
+    def _get_enhanced_phrases(self):
+        """Get multi-word phrase patterns (feature-flagged)"""
+        from config import Config
+        if not getattr(Config, 'ENHANCED_PHRASES_ENABLED', False):
+            return {}
+        
+        # Multi-word phrases for more specific classification
+        return {
+            'personnel': [
+                'personnel on flight', 'crew on flight', 'staff on flight',
+                'who is on flight', 'employees on flight', 'team on flight',
+                'who works on', 'staff assigned to', 'crew assigned to',
+                'cleaning lead on', 'supervisor on', 'manager on'
+            ],
+            'equipment': [
+                'equipment on flight', 'tractor on flight', 'vehicle on',
+                'available equipment', 'equipment status', 'equipment assigned',
+                'pushback tractor', 'equipment location'
+            ],
+            'flight_status': [
+                'flight status', 'aircraft status', 'flight delayed',
+                'flights running', 'aircraft struggling', 'timing issues',
+                'behind schedule', 'ahead of schedule'
+            ]
+        }
+
+    def _check_enhanced_phrases(self, user_query):
+        """Check for multi-word phrase matches (most specific)"""
+        phrases = self._get_enhanced_phrases()
+        if not phrases:
+            return None
+        
+        query_lower = user_query.lower()
+        
+        # Check each category's phrases
+        for category, phrase_list in phrases.items():
+            for phrase in phrase_list:
+                if phrase in query_lower:
+                    logger.info(f"📝 PHRASE MATCH: '{phrase}' → {category}")
+                    return category
+        
+        return None
+
+    def _check_enhanced_keywords(self, user_query):
+        """Check enhanced keyword lists (after phrase check)"""
+        keywords = self._get_enhanced_keywords()
+        if not keywords:
+            return None
+        
+        query_lower = user_query.lower()
+        
+        # Check each category's keywords
+        for category, keyword_list in keywords.items():
+            if any(word in query_lower for word in keyword_list):
+                logger.info(f"🔍 ENHANCED KEYWORD MATCH: {category}")
+                return category
+        
+        return None
+
+    def _classify_query_enhanced(self, user_query):
+        """Enhanced classification with phrases and keywords (wrapper method)"""
+        from config import Config
+        
+        # 1. Most specific: Multi-word phrases
+        if getattr(Config, 'ENHANCED_PHRASES_ENABLED', False):
+            phrase_result = self._check_enhanced_phrases(user_query)
+            if phrase_result:
+                return phrase_result
+        
+        # 2. Enhanced keywords (if phrase didn't match)
+        if getattr(Config, 'ENHANCED_KEYWORDS_ENABLED', False):
+            keyword_result = self._check_enhanced_keywords(user_query)
+            if keyword_result:
+                return keyword_result
+        
+        # 3. Fall back to original keyword logic
+        return self._classify_query_type_keywords(user_query)
 
     def _get_dynamic_status_values(self):
         """Dynamically discover unique values from database with smart caching"""
@@ -1229,7 +1482,8 @@ Make the response natural for voice output but don't omit important details. Use
         if any(phrase in response_text.lower() for phrase in ["don't know", "no lo sé", "ne sais pas"]):
             confidence = 0.1
         
-        return {
+        # Build base result
+        result = {
             "response": response_text,
             "confidence": confidence,
             "latency": time.time() - start_time,
@@ -1238,6 +1492,12 @@ Make the response natural for voice output but don't omit important details. Use
             "language": language,
             "query_type": "simple"
         }
+        
+        # Add clarification if needed (feature-flagged)
+        query_type = self._classify_query_type_with_fallback(user_query)
+        result = self._add_clarification_if_needed(result, user_query, query_type)
+        
+        return result
     
     def build_context_prompt(self, context_data):
         """Build context prompt from conversation history"""
@@ -1774,6 +2034,54 @@ def get_analytics_v2():
             "error": str(e),
             "api_version": "2.0",
             "timestamp": time.time()
+        }), 500
+
+@app.route('/api/v2/feedback', methods=['POST'])
+def submit_feedback():
+    """Submit user feedback for learning system (feature-flagged)"""
+    from config import Config
+    if not getattr(Config, 'LEARNING_ENABLED', False):
+        return jsonify({
+            'error': 'Learning system disabled',
+            'message': 'Feedback collection is not currently enabled'
+        }), 400
+    
+    try:
+        data = request.get_json()
+        learning_id = data.get('learning_id')
+        user_feedback = data.get('feedback')
+        suggested_classification = data.get('classification')
+        
+        if not learning_id or not user_feedback:
+            return jsonify({
+                'error': 'Missing required fields',
+                'required': ['learning_id', 'feedback']
+            }), 400
+        
+        # Store feedback
+        success = assistant._store_user_feedback(
+            learning_id, 
+            user_feedback, 
+            suggested_classification
+        )
+        
+        if success:
+            return jsonify({
+                'message': 'Feedback received successfully',
+                'learning_id': learning_id,
+                'status': 'stored'
+            })
+        else:
+            return jsonify({
+                'error': 'Failed to store feedback',
+                'learning_id': learning_id
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"❌ Feedback endpoint error: {e}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
         }), 500
 
 @app.route('/api/v2/docs', methods=['GET'])
