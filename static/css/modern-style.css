@@ -1348,6 +1348,9 @@ body .settings-section.settings-section,
   transition: all 0.3s ease !important;
 }
 
+.keywords-icon { background: linear-gradient(135deg, rgba(255, 69, 58, 0.2), rgba(255, 159, 10, 0.2)) !important; color: #ff453a !important; }
+.phrases-icon { background: linear-gradient(135deg, rgba(52, 199, 89, 0.2), rgba(48, 176, 199, 0.2)) !important; color: #34c759 !important; }
+.transparent-icon { background: linear-gradient(135deg, rgba(255, 214, 10, 0.2), rgba(255, 149, 0, 0.2)) !important; color: #ffb800 !important; }
 .sensitivity-icon { background: linear-gradient(135deg, rgba(255, 149, 0, 0.2), rgba(255, 107, 53, 0.2)) !important; color: var(--accent-orange) !important; }
 .biometrics-icon { background: linear-gradient(135deg, rgba(48, 209, 88, 0.2), rgba(0, 199, 190, 0.2)) !important; color: var(--accent-green) !important; }
 .stress-icon { background: linear-gradient(135deg, rgba(191, 90, 242, 0.2), rgba(255, 45, 146, 0.2)) !important; color: var(--accent-purple) !important; }

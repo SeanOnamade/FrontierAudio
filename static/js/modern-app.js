@@ -31,6 +31,9 @@ class ModernJarvisApp {
             
             // Settings
             sensitivitySelect: document.getElementById('sensitivity-select'),
+            enhancedKeywordsToggle: document.getElementById('enhanced-keywords-toggle'),
+            enhancedPhrasesToggle: document.getElementById('enhanced-phrases-toggle'),
+            transparentResponsesToggle: document.getElementById('transparent-responses-toggle'),
             biometricsToggle: document.getElementById('biometrics-toggle'),
             stressDetectionToggle: document.getElementById('stress-detection-toggle'),
             autoLanguageToggle: document.getElementById('auto-language-toggle'),
@@ -329,6 +332,9 @@ class ModernJarvisApp {
         
         // Checkbox settings
         [
+            'enhancedKeywordsToggle',
+            'enhancedPhrasesToggle',
+            'transparentResponsesToggle',
             'biometricsToggle',
             'stressDetectionToggle', 
             'autoLanguageToggle'
@@ -722,6 +728,18 @@ class ModernJarvisApp {
         console.log(`⚙️ Setting ${settingId} updated to:`, value);
         
         switch (settingId) {
+            case 'enhancedKeywordsToggle':
+                // Send enhanced keywords setting to backend
+                this.sendFeatureToggle('ENHANCED_KEYWORDS_ENABLED', value);
+                break;
+            case 'enhancedPhrasesToggle':
+                // Send enhanced phrases setting to backend
+                this.sendFeatureToggle('ENHANCED_PHRASES_ENABLED', value);
+                break;
+            case 'transparentResponsesToggle':
+                // Transparent responses (always enabled, but could be toggled in future)
+                this.sendFeatureToggle('TRANSPARENT_RESPONSES_ENABLED', value);
+                break;
             case 'biometricsToggle':
                 // Enable/disable voice biometrics
                 break;
@@ -731,6 +749,41 @@ class ModernJarvisApp {
             case 'autoLanguageToggle':
                 // Enable/disable auto language detection
                 break;
+        }
+    }
+    
+    async sendFeatureToggle(featureName, enabled) {
+        try {
+            const response = await fetch('/api/features', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    feature: featureName,
+                    enabled: enabled
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`✅ Feature ${featureName} ${enabled ? 'enabled' : 'disabled'}:`, data);
+                
+                // Show user feedback
+                this.logMessage('system', `${featureName.replace('_', ' ').toLowerCase()} ${enabled ? 'enabled' : 'disabled'}`, { 
+                    type: 'info' 
+                });
+            } else {
+                console.warn(`⚠️ Failed to toggle ${featureName}:`, response.statusText);
+                this.logMessage('system', `Failed to update ${featureName.replace('_', ' ').toLowerCase()}`, { 
+                    type: 'warning' 
+                });
+            }
+        } catch (error) {
+            console.error(`❌ Error toggling ${featureName}:`, error);
+            this.logMessage('system', `Error updating ${featureName.replace('_', ' ').toLowerCase()}`, { 
+                type: 'error' 
+            });
         }
     }
     

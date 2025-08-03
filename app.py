@@ -2420,6 +2420,56 @@ def submit_feedback():
             'message': str(e)
         }), 500
 
+@app.route('/api/features', methods=['POST'])
+def toggle_feature():
+    """Toggle feature flags from frontend"""
+    try:
+        data = request.get_json()
+        feature_name = data.get('feature')
+        enabled = data.get('enabled', False)
+        
+        if not feature_name:
+            return jsonify({
+                'error': 'Missing feature name',
+                'required': ['feature', 'enabled']
+            }), 400
+        
+        # Validate feature name
+        valid_features = [
+            'ENHANCED_KEYWORDS_ENABLED',
+            'ENHANCED_PHRASES_ENABLED', 
+            'TRANSPARENT_RESPONSES_ENABLED',
+            'LEARNING_ENABLED',
+            'CLARIFICATION_ENABLED'
+        ]
+        
+        if feature_name not in valid_features:
+            return jsonify({
+                'error': 'Invalid feature name',
+                'valid_features': valid_features
+            }), 400
+        
+        # Update the config (note: this only affects current session)
+        # For persistent changes, user would need to update .env file
+        from config import Config
+        setattr(Config, feature_name, enabled)
+        
+        logger.info(f"🎛️ Feature {feature_name} {'enabled' if enabled else 'disabled'} via API")
+        
+        return jsonify({
+            'message': f'Feature {feature_name} {"enabled" if enabled else "disabled"}',
+            'feature': feature_name,
+            'enabled': enabled,
+            'note': 'Change applies to current session only. Update .env file for persistence.'
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Feature toggle error: {e}")
+        return jsonify({
+            'error': 'Internal server error',
+            'message': str(e)
+        }), 500
+
 @app.route('/api/v2/docs', methods=['GET'])
 def api_documentation():
     """OpenAPI documentation for v2 API"""
