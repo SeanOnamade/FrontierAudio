@@ -707,7 +707,7 @@ ENHANCED DATABASE SCHEMA WITH RELATIONSHIPS (ACTUAL DATABASE):
 flights table (Core flight operations):
 - flight_id (VARCHAR, PRIMARY KEY): Unique flight identifier  
 - flight_number (VARCHAR): Flight number (e.g., 'UA2406', 'AA1234')
-- airline_code (VARCHAR): Airline code (e.g., 'UA', 'AA', 'DL')
+- airline_code (VARCHAR): Airline/Provider company name (e.g., 'United', 'American', 'Delta') - USE FOR "provider company", "airline", "carrier", "operator" queries
 - flight_status (VARCHAR): ACTUAL VALUES IN DATABASE: {flight_status_values}
 - gate_id (INTEGER, FOREIGN KEY): Assigned gate (references gates.gate_id)
 - scheduled_departure, actual_departure (TIMESTAMP): Departure timing
@@ -789,6 +789,10 @@ Equipment Status:
 - "available/free/ready" → 'Available'
 - "assigned/busy/in use" → 'Assigned'
 - "maintenance/repair/broken" → 'Maintenance'
+
+Airline/Provider Company:
+- "provider company/operator/carrier/airline/company/runs/operates" → use airline_code column
+- "United Airlines/United" → 'United' (matches airline_code values)
 
 Temporal Queries (for ORDER BY patterns):
 - "land/landed/landing/arrive/arrived" → use actual_arrival column
@@ -917,7 +921,17 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
                         # ADDITIONAL COMMON PATTERNS
                         '"What flights are delayed?" -> SELECT * FROM flights WHERE status LIKE \'%delay%\';',
                         '"What flights are on time now?" -> SELECT * FROM flights WHERE status LIKE \'%time%\';',
-                        '"Show me all United Airlines flights" -> SELECT * FROM flights WHERE airline = \'United Airlines\';',
+                        '"Show me all United Airlines flights" -> SELECT * FROM flights WHERE airline_code = \'United\';',
+                        
+                        # PROVIDER COMPANY / AIRLINE QUERIES
+                        '"What is the provider company for flight UA1214?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1214\';',
+                        '"What is the airline for flight UA2406?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA2406\';',
+                        '"Which airline operates flight UA406?" -> SELECT airline_code FROM flights WHERE flight_number LIKE \'%UA406%\';',
+                        '"What company operates flight 1214?" -> SELECT airline_code FROM flights WHERE flight_number LIKE \'%1214%\';',
+                        '"Who is the carrier for flight UA1214?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1214\';',
+                        '"What airline company runs flight 2406?" -> SELECT airline_code FROM flights WHERE flight_number LIKE \'%2406%\';',
+                        '"Provider company of flight UA1234?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1234\';',
+                        
                         '"What equipment is available?" -> SELECT * FROM equipment WHERE status = \'available\';',
                         '"Who is working in baggage handling?" -> SELECT * FROM employees WHERE department = \'baggage\';'
                     ]
@@ -982,6 +996,8 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
             - For status queries, use exact matches for ACTUAL database values: flight_status = 'Late', flight_status = 'On Time Depature'
             - ACTUAL flight_status values in database: {flight_status_list}
             - ACTUAL equipment_status values in database: {equipment_status_list}
+            - For AIRLINE/PROVIDER COMPANY queries: Use airline_code column for "provider company", "airline", "carrier", "operator", "company" questions
+              * Example: "What is the provider company for flight UA1214?" → SELECT airline_code FROM flights WHERE flight_number = 'UA1214'
             - For flight numbers: Try exact match first, then LIKE pattern if needed
               * Exact: flight_number = 'UA2406'
               * Pattern: flight_number LIKE '%UA406%' (for partial matches from speech recognition)
