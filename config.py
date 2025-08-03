@@ -66,6 +66,9 @@ class Config:
     CLARIFICATION_ENABLED = os.getenv('CLARIFICATION_ENABLED', 'False').lower() == 'true'
     LEARNING_ENABLED = os.getenv('LEARNING_ENABLED', 'False').lower() == 'true'
     
+    # Dynamic Speech Processing (enabled by default - handles unknown equipment variations)
+    DYNAMIC_FALLBACK_ENABLED = os.getenv('DYNAMIC_FALLBACK_ENABLED', 'True').lower() == 'true'
+    
     # Transparent Response System (enabled by default - improves UX without risk)
     TRANSPARENT_RESPONSES_ENABLED = os.getenv('TRANSPARENT_RESPONSES_ENABLED', 'True').lower() == 'true'
     

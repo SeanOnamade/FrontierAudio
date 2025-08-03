@@ -34,6 +34,7 @@ class ModernJarvisApp {
             enhancedKeywordsToggle: document.getElementById('enhanced-keywords-toggle'),
             enhancedPhrasesToggle: document.getElementById('enhanced-phrases-toggle'),
             transparentResponsesToggle: document.getElementById('transparent-responses-toggle'),
+            dynamicFallbackToggle: document.getElementById('dynamic-fallback-toggle'),
             biometricsToggle: document.getElementById('biometrics-toggle'),
             stressDetectionToggle: document.getElementById('stress-detection-toggle'),
             autoLanguageToggle: document.getElementById('auto-language-toggle'),
@@ -335,6 +336,7 @@ class ModernJarvisApp {
             'enhancedKeywordsToggle',
             'enhancedPhrasesToggle',
             'transparentResponsesToggle',
+            'dynamicFallbackToggle',
             'biometricsToggle',
             'stressDetectionToggle', 
             'autoLanguageToggle'
@@ -739,6 +741,10 @@ class ModernJarvisApp {
             case 'transparentResponsesToggle':
                 // Transparent responses (always enabled, but could be toggled in future)
                 this.sendFeatureToggle('TRANSPARENT_RESPONSES_ENABLED', value);
+                break;
+            case 'dynamicFallbackToggle':
+                // Send dynamic fallback setting to backend
+                this.sendFeatureToggle('DYNAMIC_FALLBACK_ENABLED', value);
                 break;
             case 'biometricsToggle':
                 // Enable/disable voice biometrics
