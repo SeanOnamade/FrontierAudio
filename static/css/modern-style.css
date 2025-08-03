@@ -39,7 +39,6 @@ body {
   background: #000000 !important;
   color: #ffffff !important;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif !important;
-  overflow-x: hidden !important;
 }
 
 html {
@@ -650,10 +649,22 @@ body {
 
 .conversation-content,
 .settings-content {
-  max-height: 0;
+  max-height: 500px;
   overflow: hidden;
   transition: max-height var(--transition-slow);
   background: rgba(0, 0, 0, 0.1);
+}
+
+.conversation-content.collapsed {
+  max-height: 0;
+}
+
+.settings-content {
+  max-height: 800px;
+}
+
+.settings-content.collapsed {
+  max-height: 0;
 }
 
 .conversation-content.expanded {
@@ -1177,8 +1188,6 @@ html, body {
   background: #000000 !important;
   color: #ffffff !important;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif !important;
-  height: 100% !important;
-  overflow-x: hidden !important;
 }
 
 /* MAXIMUM SPECIFICITY FORCE */
@@ -1552,4 +1561,11 @@ body .settings-section.settings-section,
   }
 }
 
-/* PREMIUM CARDS UI DEBUG INDICATOR REMOVED */ 
+/* PREMIUM CARDS UI DEBUG INDICATOR REMOVED */
+
+/* Minimal scroll content for Windows */
+.app-container::after {
+  content: "";
+  display: block;
+  height: 2vh;
+} 
