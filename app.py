@@ -282,10 +282,12 @@ Category:"""
             logger.error(f"❌ AI classification failed: {e}, defaulting to 'general'")
             return 'general'
 
-    def _classify_query_type_with_fallback(self, user_query):
+    def _classify_query_type_with_fallback(self, user_query, return_method=False):
         """Smart classification with enhanced priority order"""
         from config import Config
         if not getattr(Config, 'QUERY_CLASSIFICATION_ENABLED', False):
+            if return_method:
+                return 'general', 'disabled'
             return 'general'
         
         # Step 1: Try enhanced classification (phrases + enhanced keywords)
@@ -293,6 +295,8 @@ Category:"""
             getattr(Config, 'ENHANCED_KEYWORDS_ENABLED', False)):
             enhanced_result = self._classify_query_enhanced(user_query)
             if enhanced_result != 'general':
+                if return_method:
+                    return enhanced_result, 'enhanced'
                 return enhanced_result
         
         # Step 2: Try original keyword-based classification (fast)
@@ -300,11 +304,16 @@ Category:"""
         
         if keyword_result != 'general':
             logger.info(f"🔑 KEYWORD MATCH: {keyword_result}")
+            if return_method:
+                return keyword_result, 'keyword_based'
             return keyword_result
         
         # Step 3: Use AI fallback for edge cases (slower but smarter)
         logger.info(f"🤖 FALLBACK: Using AI classification for edge case")
-        return self._classify_query_type_ai(user_query)
+        ai_result = self._classify_query_type_ai(user_query)
+        if return_method:
+            return ai_result, 'ai_fallback'
+        return ai_result
 
     def _classify_query_type_keywords(self, user_query):
         """Fast keyword-based classification (renamed from original method)"""
@@ -834,11 +843,11 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
         
         return domain_contexts.get(query_type, "")
     
-    def parse_query_to_sql(self, user_query, schema, language='en', context_prompt=''):
+    def parse_query_to_sql(self, user_query, schema, language='en', context_prompt='', return_metadata=False):
         """Convert natural language query to SQL using OpenAI with conversation context"""
         try:
             # NEW: Classify query type with smart fallback (keywords first, then AI)
-            query_type = self._classify_query_type_with_fallback(user_query)
+            query_type, classification_method = self._classify_query_type_with_fallback(user_query, return_method=True)
             logger.info(f"🔍 QUERY CLASSIFIED AS: {query_type}")
             
             # NEW: Enhanced schema if enabled, otherwise original behavior
@@ -984,16 +993,22 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
             # ✅ FALLBACK HANDLING: Check for complex queries that might fail
             if sql_query == "NO_DATA" or not sql_query:
                 logger.warning(f"🚫 SQL generation failed for query: {user_query}")
+                if return_metadata:
+                    return None, classification_method
                 return None
                 
             # ⚠️ VALIDATION: Check for potentially problematic queries
             if "JOIN" in sql_query.upper() and "assignments" in sql_query.lower():
                 logger.info(f"⚠️ Complex JOIN detected - this might fail due to database structure")
             
+            if return_metadata:
+                return sql_query, classification_method
             return sql_query
             
         except Exception as e:
             logger.error(f"Query parsing error: {e}")
+            if return_metadata:
+                return None, "error"
             return None
     
     def format_response(self, data, original_query, language='en'):
@@ -1455,7 +1470,12 @@ Make the response natural for voice output but don't omit important details. Use
                 logger.warning("Complex query processing failed, falling back to simple processing")
         
         # Convert to SQL with context (simple processing)
-        sql_query = self.parse_query_to_sql(user_query, schema, language, context_prompt)
+        sql_result = self.parse_query_to_sql(user_query, schema, language, context_prompt, return_metadata=True)
+        if isinstance(sql_result, tuple):
+            sql_query, classification_method = sql_result
+        else:
+            sql_query = sql_result
+            classification_method = "unknown"
         if not sql_query:
             return {
                 "response": messages['parse_error'],
@@ -1490,7 +1510,8 @@ Make the response natural for voice output but don't omit important details. Use
             "sql_query": sql_query,
             "result_count": len(results) if results else 0,
             "language": language,
-            "query_type": "simple"
+            "query_type": "simple",
+            "classification_method": classification_method
         }
         
         # Add clarification if needed (feature-flagged)
@@ -1923,7 +1944,7 @@ def process_voice_query_v2():
                 "original_query": original_query,
                 "preprocessed_query": user_query,
                 "session_id": session_id,
-                "classification_method": "keyword_based",  # Could be enhanced later
+                "classification_method": result.get("classification_method", "unknown"),
                 "confidence_threshold": assistant.confidence_threshold
             }
         

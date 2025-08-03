@@ -46,6 +46,15 @@ node_modules/
 *.db-wal
 *.db-shm
 
+# Learning system database (varies per developer)
+query_learning_*.db
+**/query_learning*
+
+# Database state changes (SQLite sequence, learning data)
+# Keep original sample DB but ignore any modifications with learning tables
+united_airlines_normalized*.db-backup
+*learning*.db
+
 # Temporary files
 tmp/
 temp/
