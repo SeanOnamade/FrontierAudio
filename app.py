@@ -112,6 +112,51 @@ class AirportVoiceAssistant:
             logger.error(f"Query execution error: {e}")
             return None
     
+    def execute_query_with_fallback(self, user_query, query_type, original_sql=None):
+        """
+        SAFE: Execute query with dynamic equipment matching fallback
+        Only applies fallback if original query returns zero results
+        """
+        # ALWAYS try original query first
+        if original_sql:
+            original_results = self.execute_query(original_sql)
+        else:
+            # This shouldn't happen in normal flow, but handle gracefully
+            return []
+        
+        # If we got results, return them immediately (no changes to existing flow)
+        if original_results and len(original_results) > 0:
+            return original_results
+        
+        # Only if ZERO results AND it's an equipment query AND dynamic fallback is enabled
+        from config import Config
+        if query_type == 'equipment' and getattr(Config, 'DYNAMIC_FALLBACK_ENABLED', False):
+            enhanced_query = self.apply_dynamic_equipment_matching(user_query)
+            
+            # Only proceed if something actually changed
+            if enhanced_query != user_query:
+                logging.info(f"🔄 FALLBACK ATTEMPT: Original query returned 0 results, trying dynamic matching")
+                
+                # Parse the enhanced query to SQL using existing system
+                enhanced_sql_response = self.parse_query_to_sql(
+                    enhanced_query, 
+                    self.get_database_schema(), 
+                    return_metadata=True
+                )
+                
+                if enhanced_sql_response and 'sql' in enhanced_sql_response:
+                    enhanced_results = self.execute_query(enhanced_sql_response['sql'])
+                    
+                    if enhanced_results and len(enhanced_results) > 0:
+                        logging.info(f"🎯 DYNAMIC FALLBACK SUCCESS: '{user_query}' → '{enhanced_query}' → {len(enhanced_results)} results")
+                        return enhanced_results
+                    else:
+                        logging.info(f"🔄 DYNAMIC FALLBACK FAILED: Enhanced query also returned 0 results")
+        
+        # If all else fails, return original results (could be empty)
+        logging.info(f"🔄 FALLBACK COMPLETE: Returning original results ({len(original_results)} rows)")
+        return original_results
+    
     def _init_learning_database(self):
         """Initialize learning database table (feature-flagged)"""
         try:
@@ -324,7 +369,7 @@ Category:"""
             return 'flight_status'
         
         # Equipment queries  
-        elif any(word in query_lower for word in ['equipment', 'tractor', 'pushback', 'assigned', 'available']):
+        elif any(word in query_lower for word in ['equipment', 'tractor', 'pushback', 'assigned', 'available', 'loader', 'truck', 'gpu', 'pca', 'tug', 'lavatory', 'service', 'container', 'belt', 'baggage', 'tow']):
             return 'equipment'
         
         # Personnel queries
@@ -658,10 +703,16 @@ Category:"""
                 '"Most recent departure" -> SELECT * FROM flights WHERE actual_departure IS NOT NULL ORDER BY actual_departure DESC LIMIT 1;'
             ],
             'equipment': [
-                '"What equipment is available?" -> SELECT e.entity_id, e.equipment_type, el.location_code FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.equipment_status = \'Available\';',
-                '"Find pushback tractors" -> SELECT e.entity_id, e.equipment_type, el.location_code, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.equipment_type = \'Pushback Tractor\';',
-                '"What equipment needs maintenance?" -> SELECT e.entity_id, e.equipment_type, el.location_code FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.equipment_status LIKE \'%maintenance%\';',
-                '"Show me equipment at gate A8" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.location_code = \'A8\';'
+                '"Find pushback tractors assigned to B-South" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone = \'B-South\';',
+                '"How many pushback tractors in zone B-South?" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone = \'B-South\';',
+                '"How many container loaders in C-South-1?" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Container Loader\' AND assigned_zone = \'C-South-1\';',
+                '"Show me Belt Loader in B-Mid" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Belt Loader\' AND assigned_zone = \'B-Mid\';',
+                '"Find GPU in C-Central" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'GPU\' AND assigned_zone = \'C-Central\';',
+                '"Show me Service Truck in B-North" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Service Truck\' AND assigned_zone = \'B-North\';',
+                '"How many Lavatory Truck in C-North" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Lavatory Truck\' AND assigned_zone = \'C-North\';',
+                '"find Service Truck equipment in B-South" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Service Truck\' AND assigned_zone = \'B-South\';',
+                '"show me GPU equipment in C-North" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'GPU\' AND assigned_zone = \'C-North\';',
+                '"find Container Loader equipment in C-Central" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Container Loader\' AND assigned_zone = \'C-Central\';'
             ],
             'personnel': [
                 '"Who is the cleaning lead?" -> SELECT e.employee_name, e.phone_number FROM employees e JOIN employee_roles er ON e.employee_id = er.employee_id WHERE er.role_name = \'Cleaning Lead\';',
@@ -1032,7 +1083,7 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
             if sql_query == "NO_DATA" or not sql_query:
                 logger.warning(f"🚫 SQL generation failed for query: {user_query}")
                 if return_metadata:
-                    return None, classification_method
+                    return {'sql': None, 'classification_method': classification_method, 'query_type': query_type}
                 return None
                 
             # ⚠️ VALIDATION: Check for potentially problematic queries
@@ -1040,13 +1091,13 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
                 logger.info(f"⚠️ Complex JOIN detected - this might fail due to database structure")
             
             if return_metadata:
-                return sql_query, classification_method
+                return {'sql': sql_query, 'classification_method': classification_method, 'query_type': query_type}
             return sql_query
             
         except Exception as e:
             logger.error(f"Query parsing error: {e}")
             if return_metadata:
-                return None, "error"
+                return {'sql': None, 'classification_method': 'error', 'query_type': 'general'}
             return None
     
     def format_response(self, data, original_query, language='en'):
@@ -1497,24 +1548,267 @@ Soyez amical et spécifique, évitez le jargon technique."""
         if original_query != user_query:
             logging.info(f"🔧 FLIGHT NUMBER CORRECTION: '{original_query}' → '{user_query}'")
         
-        # Common word corrections for airport operations
-        corrections = [
-            ('pushback tractor', 'pushback tractor'),
-            ('cleaning lead', 'cleaning lead'),
-            ('what is', 'what is'),
-            ('when does', 'when does'),
-            ('who is', 'who is'),
-            ('where is', 'where is'),
-        ]
-        
-        # Apply corrections (case insensitive)
-        for wrong, correct in corrections:
-            user_query = re.sub(re.escape(wrong), correct, user_query, flags=re.IGNORECASE)
+        # 🆕 EQUIPMENT PATTERN NORMALIZATION: Fix speech-to-database format mismatches
+        user_query = self.normalize_equipment_patterns(user_query)
+        user_query = self.normalize_entity_patterns(user_query) 
+        user_query = self.normalize_zone_patterns(user_query)
             
         # Log the preprocessing for debugging
         logger.info(f"🔧 PREPROCESSED QUERY: '{user_query.strip()}'")
         
         return user_query.strip()
+    
+    def normalize_equipment_patterns(self, query):
+        """Handle equipment name speech variations (pushback tractor → Push-back Tractor)"""
+        original = query
+        
+        patterns = [
+            # Push-back equipment
+            (r'\bpushback\s+tractors?\b', 'Push-back Tractor'),
+            (r'\bpush\s*back\s+tractors?\b', 'Push-back Tractor'),
+            
+            # Loaders
+            (r'\bbaggage\s+tugs?\b', 'Baggage Tug'),
+            (r'\bbelt\s+loaders?\b', 'Belt Loader'),
+            (r'\bcontainer\s+loaders?\b', 'Container Loader'),
+            
+            # Trucks
+            (r'\bservice\s+trucks?\b', 'Service Truck'),
+            (r'\blavatory\s+trucks?\b', 'Lavatory Truck'),
+            
+            # Technical equipment
+            (r'\bgpus?\b', 'GPU'),
+            (r'\bground\s+power\s+units?\b', 'GPU'),
+            (r'\bpcas?\b', 'PCA'),
+            (r'\bpower\s+conditioning\s+units?\b', 'PCA'),
+            
+            # Tow equipment  
+            (r'\btow\s+bars?\b', 'Tow Bar'),
+        ]
+        
+        for pattern, replacement in patterns:
+            query = re.sub(pattern, replacement, query, flags=re.IGNORECASE)
+        
+        if original != query:
+            logging.info(f"🔧 EQUIPMENT NORMALIZATION: '{original}' → '{query}'")
+        
+        return query
+    
+    def normalize_entity_patterns(self, query):
+        """Handle entity ID spacing (TG BM 05 → TG-BM-05)"""
+        original = query
+        
+        # Pattern: 2-3 letters, space, 2-3 letters, space, 1-3 numbers
+        query = re.sub(r'\b([A-Z]{2,3})\s+([A-Z]{2,3})\s+(\d{1,3})\b', r'\1-\2-\3', query)
+        
+        if original != query:
+            logging.info(f"🔧 ENTITY ID NORMALIZATION: '{original}' → '{query}'")
+        
+        return query
+    
+    def normalize_zone_patterns(self, query):
+        """Handle zone name spacing (Zone B South → B-South, Zone C South 1 → C-South-1)"""
+        original = query
+        
+        # Pattern 1: "zone C south 1" → "C-South-1" (complex zones with numbers)
+        def complex_zone_replacer(match):
+            letter = match.group(1).upper()
+            direction = match.group(2).capitalize()
+            number = match.group(3)
+            return f'{letter}-{direction}-{number}'
+        
+        query = re.sub(r'\bzone\s+([A-D])\s+(north|south|central)\s+(\d+)\b', complex_zone_replacer, query, flags=re.IGNORECASE)
+        
+        # Pattern 2: "zone B south" → "B-South" (simple zones)
+        def simple_zone_replacer(match):
+            letter = match.group(1).upper()
+            direction = match.group(2).capitalize()
+            return f'{letter}-{direction}'
+        
+        query = re.sub(r'\bzone\s+([A-D])\s+(north|south|mid|central)\b', simple_zone_replacer, query, flags=re.IGNORECASE)
+        
+        # Pattern 3: Direct zone references "C south 1" → "C-South-1" (without "zone" prefix)
+        query = re.sub(r'\b([A-D])\s+(north|south|central)\s+(\d+)\b', complex_zone_replacer, query, flags=re.IGNORECASE)
+        query = re.sub(r'\b([A-D])\s+(north|south|mid|central)\b', simple_zone_replacer, query, flags=re.IGNORECASE)
+        
+        # Pattern 4: Speech recognition errors "sea north" → "C-North" 
+        def speech_error_zone_replacer(match):
+            direction = match.group(1).capitalize()
+            return f'C-{direction}'
+        
+        query = re.sub(r'\bsea\s+(north|south|mid|central)\b', speech_error_zone_replacer, query, flags=re.IGNORECASE)
+        
+        if original != query:
+            logging.info(f"🔧 ZONE NORMALIZATION: '{original}' → '{query}'")
+        
+        return query
+    
+    def make_singular(self, word):
+        """Simple plural removal for equipment matching"""
+        if word.endswith('s') and len(word) > 3:
+            return word[:-1]
+        return word
+    
+    def find_equipment_match(self, user_word, actual_types):
+        """Find closest equipment type using semantic and word matching"""
+        user_clean = user_word.lower()
+        
+        # Semantic mappings for common speech variations
+        semantic_mappings = {
+            # Power-related equipment
+            'power': 'GPU',
+            'electricity': 'GPU', 
+            'electrical': 'GPU',
+            'generator': 'GPU',
+            
+            # Maintenance/service equipment  
+            'maintenance': 'Service Truck',
+            'repair': 'Service Truck',
+            'service': 'Service Truck',
+            'mechanic': 'Service Truck',
+            'fix': 'Service Truck',
+            
+            # Vehicle/truck categories
+            'vehicle': 'Service Truck',
+            'truck': 'Service Truck',
+            'van': 'Service Truck',
+            
+            # Loading equipment
+            'cargo': 'Container Loader',
+            'freight': 'Container Loader',
+            'loading': 'Container Loader',
+            
+            # Baggage equipment
+            'luggage': 'Baggage Tug',
+            'bags': 'Baggage Tug',
+            'suitcase': 'Baggage Tug',
+            
+            # Toilet/waste equipment
+            'toilet': 'Lavatory Truck',
+            'bathroom': 'Lavatory Truck',
+            'waste': 'Lavatory Truck',
+            'sewage': 'Lavatory Truck'
+        }
+        
+        # First try semantic mapping
+        if user_clean in semantic_mappings:
+            mapped_type = semantic_mappings[user_clean]
+            if mapped_type in actual_types:
+                return mapped_type
+        
+        # Then try direct word matching
+        for eq_type in actual_types:
+            eq_words = eq_type.lower().split()
+            
+            # Direct word match: "loader" in ["belt", "loader"]
+            if user_clean in eq_words:
+                return eq_type
+                
+            # Partial match: "container" in "Container Loader"  
+            for eq_word in eq_words:
+                if user_clean in eq_word or eq_word in user_clean:
+                    return eq_type
+        
+        return None
+    
+    def get_cached_equipment_types(self):
+        """Get all equipment types from database with caching"""
+        # Use existing dynamic values cache if available
+        if hasattr(self, '_cached_equipment_types') and self._cached_equipment_types:
+            return self._cached_equipment_types
+            
+        try:
+            conn = self.connect_db()
+            if not conn:
+                return []
+                
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT equipment_type FROM equipment WHERE equipment_type IS NOT NULL ORDER BY equipment_type")
+            results = cursor.fetchall()
+            self._cached_equipment_types = [row[0] for row in results]
+            conn.close()
+            
+            logging.info(f"🔧 EQUIPMENT TYPES CACHED: {len(self._cached_equipment_types)} types")
+            return self._cached_equipment_types
+        except Exception as e:
+            logging.error(f"❌ ERROR GETTING EQUIPMENT TYPES: {e}")
+            return []
+    
+    def apply_dynamic_equipment_matching(self, query):
+        """Apply dynamic equipment matching as fallback for failed queries"""
+        if not query or len(query.strip()) == 0:
+            return query
+            
+        # Get actual equipment types from database
+        actual_types = self.get_cached_equipment_types()
+        if not actual_types:
+            return query  # No equipment types available
+        
+        original_query = query
+        
+        # Look for common equipment phrase patterns and replace them cleanly
+        equipment_phrases = [
+            # Maintenance related
+            (r'\bmaintenance\s+vehicles?\b', 'Service Truck'),
+            (r'\bservice\s+vehicles?\b', 'Service Truck'),
+            (r'\brepair\s+vehicles?\b', 'Service Truck'),
+            
+            # Power related
+            (r'\bpower\s+units?\b', 'GPU'),
+            (r'\belectrical\s+units?\b', 'GPU'),
+            (r'\bgenerator\s+units?\b', 'GPU'),
+            
+            # Loading related
+            (r'\bloading\s+equipment\b', 'Container Loader'),
+            (r'\bcargo\s+equipment\b', 'Container Loader'),
+            (r'\bfreight\s+equipment\b', 'Container Loader'),
+            
+            # Baggage related
+            (r'\bluggage\s+equipment\b', 'Baggage Tug'),
+            (r'\bbag\s+equipment\b', 'Baggage Tug'),
+            
+            # Waste related
+            (r'\bwaste\s+vehicles?\b', 'Lavatory Truck'),
+            (r'\btoilet\s+vehicles?\b', 'Lavatory Truck'),
+        ]
+        
+        # Try phrase-level replacements first
+        for pattern, replacement in equipment_phrases:
+            if re.search(pattern, query, flags=re.IGNORECASE):
+                # Make the replacement more natural for AI parsing
+                if 'find' in query.lower() or 'show' in query.lower():
+                    # For "find/show X" queries, use more natural language
+                    query = re.sub(pattern, f'{replacement} equipment', query, flags=re.IGNORECASE)
+                else:
+                    query = re.sub(pattern, replacement, query, flags=re.IGNORECASE)
+                break  # Only do one replacement to avoid conflicts
+        
+        # If no phrase match, fall back to individual word matching
+        if query == original_query:
+            words = query.split()
+            best_match = None
+            first_matched_word = None
+            
+            for word in words:
+                # Remove punctuation and make singular
+                clean_word = re.sub(r'[^\w]', '', word)
+                singular = self.make_singular(clean_word)
+                
+                # Try to match against actual equipment types
+                match = self.find_equipment_match(singular, actual_types)
+                if match and not best_match:  # Only take the FIRST match
+                    best_match = match
+                    first_matched_word = word
+                    break  # Stop after first match
+            
+            # Replace the first matched word only
+            if best_match and first_matched_word:
+                query = re.sub(rf'\b{re.escape(first_matched_word)}\b', best_match, query, flags=re.IGNORECASE)
+        
+        if original_query != query:
+            logging.info(f"🎯 DYNAMIC EQUIPMENT MATCH: '{original_query}' → '{query}'")
+        
+        return query
     
     def is_complex_query(self, user_query):
         """Detect if this is a complex multi-step query that requires advanced reasoning"""
@@ -1784,11 +2078,18 @@ Soyez amical et spécifique, évitez le jargon technique."""
         
         # Convert to SQL with context (simple processing)
         sql_result = self.parse_query_to_sql(user_query, schema, language, context_prompt, return_metadata=True)
-        if isinstance(sql_result, tuple):
+        if isinstance(sql_result, dict):
+            sql_query = sql_result.get('sql')
+            classification_method = sql_result.get('classification_method', 'unknown')
+            query_type = sql_result.get('query_type', 'general')
+        elif isinstance(sql_result, tuple):
+            # Backward compatibility
             sql_query, classification_method = sql_result
+            query_type = 'general'
         else:
             sql_query = sql_result
             classification_method = "unknown"
+            query_type = 'general'
         if not sql_query:
             # Generate transparent explanation for SQL generation failure
             explanation = self.generate_transparent_explanation(
@@ -1805,8 +2106,8 @@ Soyez amical et spécifique, évitez le jargon technique."""
                 "classification_method": classification_method
             }
         
-        # Execute query
-        results = self.execute_query(sql_query)
+        # Execute query with dynamic fallback
+        results = self.execute_query_with_fallback(user_query, query_type, sql_query)
         if results is None:
             return {
                 "response": messages['query_error'],
@@ -2478,7 +2779,8 @@ def toggle_feature():
             'ENHANCED_PHRASES_ENABLED', 
             'TRANSPARENT_RESPONSES_ENABLED',
             'LEARNING_ENABLED',
-            'CLARIFICATION_ENABLED'
+            'CLARIFICATION_ENABLED',
+            'DYNAMIC_FALLBACK_ENABLED'
         ]
         
         if feature_name not in valid_features:
