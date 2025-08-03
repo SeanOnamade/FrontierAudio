@@ -39,6 +39,11 @@ class AirportVoiceAssistant:
         self.conversation_sessions = {}
         self.session_timeout = 30 * 60  # 30 minutes
         
+        # Dynamic value cache for performance
+        self.dynamic_values_cache = {}
+        self.cache_timeout = 5 * 60  # 5 minutes cache
+        self.smart_mappings_cache = {}
+        
     def connect_db(self):
         """Connect to SQLite database"""
         try:
@@ -101,11 +106,490 @@ class AirportVoiceAssistant:
             logger.error(f"Query execution error: {e}")
             return None
     
+    # Legacy method - now replaced by _classify_query_type_with_fallback
+
+    def _classify_query_type_ai(self, user_query):
+        """AI-powered query classification fallback when keywords fail"""
+        try:
+            logger.info(f"🤖 AI CLASSIFICATION: Analyzing '{user_query[:50]}...'")
+            
+            classification_prompt = f"""Classify this airport operations query into ONE category:
+
+Categories:
+- flight_status: Questions about flight delays, status, boarding, departures, arrivals, timing
+- equipment: Questions about tractors, equipment, assignments, availability, maintenance
+- personnel: Questions about employees, staff, shifts, roles, contact information
+- location: Questions about gates, terminals, locations, proximity, directions
+- time: Questions about schedules, timing, when things happen, shift times
+- general: Everything else that doesn't fit the above categories
+
+Examples:
+- "Which aircraft are running behind schedule?" -> flight_status
+- "Find me some ground support equipment" -> equipment  
+- "Who's the manager on duty?" -> personnel
+- "Where can I find gate B12?" -> location
+- "What time does the next shift start?" -> time
+- "How's the weather today?" -> general
+
+Query: "{user_query}"
+
+Category:"""
+            
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": classification_prompt}],
+                max_tokens=15,
+                temperature=0.0
+            )
+            
+            ai_classification = response.choices[0].message.content.strip().lower()
+            
+            # Validate AI response
+            valid_categories = ['flight_status', 'equipment', 'personnel', 'location', 'time', 'general']
+            if ai_classification in valid_categories:
+                logger.info(f"🎯 AI CLASSIFIED AS: {ai_classification}")
+                return ai_classification
+            else:
+                logger.warning(f"⚠️ AI returned invalid category: {ai_classification}, defaulting to 'general'")
+                return 'general'
+                
+        except Exception as e:
+            logger.error(f"❌ AI classification failed: {e}, defaulting to 'general'")
+            return 'general'
+
+    def _classify_query_type_with_fallback(self, user_query):
+        """Smart classification: try keywords first, then AI fallback"""
+        from config import Config
+        if not getattr(Config, 'QUERY_CLASSIFICATION_ENABLED', False):
+            return 'general'
+        
+        # Step 1: Try keyword-based classification (fast)
+        keyword_result = self._classify_query_type_keywords(user_query)
+        
+        if keyword_result != 'general':
+            logger.info(f"🔑 KEYWORD MATCH: {keyword_result}")
+            return keyword_result
+        
+        # Step 2: Use AI fallback for edge cases (slower but smarter)
+        logger.info(f"🤖 FALLBACK: Using AI classification for edge case")
+        return self._classify_query_type_ai(user_query)
+
+    def _classify_query_type_keywords(self, user_query):
+        """Fast keyword-based classification (renamed from original method)"""
+        query_lower = user_query.lower()
+        
+        # Flight status queries
+        if any(word in query_lower for word in ['status', 'flight', 'delayed', 'on time', 'departed', 'boarding']):
+            return 'flight_status'
+        
+        # Equipment queries  
+        elif any(word in query_lower for word in ['equipment', 'tractor', 'pushback', 'assigned', 'available']):
+            return 'equipment'
+        
+        # Personnel queries
+        elif any(word in query_lower for word in ['who', 'employee', 'shift', 'contact', 'phone', 'cleaning lead']):
+            return 'personnel'
+        
+        # Location queries
+        elif any(word in query_lower for word in ['where', 'gate', 'location', 'nearest', 'closest']):
+            return 'location'
+        
+        # Time queries
+        elif any(word in query_lower for word in ['when', 'time', 'schedule', 'end', 'next']):
+            return 'time'
+        
+        return 'general'
+
+    def _get_dynamic_status_values(self):
+        """Dynamically discover unique values from database with smart caching"""
+        # Check cache first
+        cache_key = 'dynamic_status_values'
+        current_time = time.time()
+        
+        if (cache_key in self.dynamic_values_cache and 
+            current_time - self.dynamic_values_cache[cache_key]['timestamp'] < self.cache_timeout):
+            logger.info("📋 CACHE HIT: Using cached dynamic values")
+            return self.dynamic_values_cache[cache_key]['data']
+        
+        logger.info("🔍 CACHE MISS: Discovering fresh dynamic database values...")
+        
+        try:
+            import sqlite3
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get unique flight status values
+            cursor.execute("SELECT DISTINCT flight_status FROM flights WHERE flight_status IS NOT NULL ORDER BY flight_status")
+            flight_statuses = [f"'{row[0]}'" for row in cursor.fetchall()]
+            logger.info(f"📊 FOUND flight_status values: {flight_statuses}")
+            
+            # Get unique equipment status values
+            cursor.execute("SELECT DISTINCT equipment_status FROM equipment_locations WHERE equipment_status IS NOT NULL ORDER BY equipment_status")
+            equipment_statuses = [f"'{row[0]}'" for row in cursor.fetchall()]
+            logger.info(f"📊 FOUND equipment_status values: {equipment_statuses}")
+            
+            # Get unique role names
+            cursor.execute("SELECT DISTINCT role_name FROM employee_roles WHERE role_name IS NOT NULL ORDER BY role_name")
+            role_names = [f"'{row[0]}'" for row in cursor.fetchall()]
+            logger.info(f"📊 FOUND role_name values: {role_names}")
+            
+            # Get unique service types
+            cursor.execute("SELECT DISTINCT service_type FROM flight_services WHERE service_type IS NOT NULL ORDER BY service_type")
+            service_types = [f"'{row[0]}'" for row in cursor.fetchall()]
+            logger.info(f"📊 FOUND service_type values: {service_types}")
+            
+            conn.close()
+            
+            dynamic_values = {
+                'flight_status': flight_statuses,
+                'equipment_status': equipment_statuses,
+                'role_names': role_names,
+                'service_types': service_types
+            }
+            
+            # Cache the results
+            self.dynamic_values_cache[cache_key] = {
+                'data': dynamic_values,
+                'timestamp': current_time
+            }
+            
+            logger.info(f"✅ DYNAMIC VALUES DISCOVERED & CACHED: {len(sum(dynamic_values.values(), []))} total unique values")
+            return dynamic_values
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Could not discover dynamic values: {e}")
+            # Fallback to known values
+            return {
+                'flight_status': ["'Late'", "'On Time Depature'", "'Turning'", "'Turning Preparation'", "'Waiting on Aircraft'"],
+                'equipment_status': ["'Available'", "'Assigned'", "'Maintenance'"],
+                'role_names': ["'Cleaning Lead'", "'Supervisor'", "'Ramp Agent'"],
+                'service_types': ["'Cleaning'", "'Catering'", "'Fueling'"]
+            }
+
+    def _get_smart_mappings(self):
+        """Create smart mappings from user language to database values"""
+        cache_key = 'smart_mappings'
+        current_time = time.time()
+        
+        # Check cache first
+        if (cache_key in self.smart_mappings_cache and 
+            current_time - self.smart_mappings_cache[cache_key]['timestamp'] < self.cache_timeout):
+            logger.info("📋 CACHE HIT: Using cached smart mappings")
+            return self.smart_mappings_cache[cache_key]['data']
+        
+        logger.info("🧠 BUILDING: Smart language mappings...")
+        
+        # Get current dynamic values
+        dynamic_values = self._get_dynamic_status_values()
+        
+        smart_mappings = {
+            'flight_status': {
+                # Map user language to exact database values
+                'late': 'Late',
+                'delayed': 'Late',
+                'behind schedule': 'Late',
+                'running late': 'Late',
+                'tardy': 'Late',
+                
+                'on time': 'On Time Depature',  # Note: keeping the typo from database
+                'punctual': 'On Time Depature',
+                'scheduled': 'On Time Depature',
+                'timely': 'On Time Depature',
+                
+                'turning': 'Turning',
+                'turning around': 'Turning',
+                'turnaround': 'Turning',
+                
+                'turning preparation': 'Turning Preparation',
+                'prep': 'Turning Preparation',
+                'preparing': 'Turning Preparation',
+                
+                'waiting on aircraft': 'Waiting on Aircraft',
+                'waiting for plane': 'Waiting on Aircraft',
+                'aircraft delay': 'Waiting on Aircraft'
+            },
+            'equipment_status': {
+                'available': 'Available',
+                'free': 'Available', 
+                'ready': 'Available',
+                'idle': 'Available',
+                
+                'assigned': 'Assigned',
+                'busy': 'Assigned',
+                'in use': 'Assigned',
+                'occupied': 'Assigned',
+                
+                'maintenance': 'Maintenance',
+                'repair': 'Maintenance',
+                'broken': 'Maintenance',
+                'out of order': 'Maintenance'
+            },
+            'common_roles': {
+                'cleaning lead': 'Cleaning Lead',
+                'cleaner': 'Cleaning Lead',
+                'janitorial': 'Cleaning Lead',
+                
+                'supervisor': 'Supervisor',
+                'manager': 'Supervisor',
+                'lead': 'Supervisor',
+                
+                'ramp agent': 'Ramp Agent',
+                'ground crew': 'Ramp Agent',
+                'baggage handler': 'Ramp Agent'
+            }
+        }
+        
+        # Cache the mappings
+        self.smart_mappings_cache[cache_key] = {
+            'data': smart_mappings,
+            'timestamp': current_time
+        }
+        
+        total_mappings = sum(len(category) for category in smart_mappings.values())
+        logger.info(f"✅ SMART MAPPINGS CREATED & CACHED: {total_mappings} language mappings")
+        
+        return smart_mappings
+
+    def _get_enhanced_examples(self, query_type, language='en'):
+        """Get targeted examples based on query type"""
+        from config import Config
+        if not getattr(Config, 'ENHANCED_PROMPTS_ENABLED', False):
+            return []  # Fall back to original examples
+        
+        enhanced_examples = {
+            'flight_status': [
+                '"Is flight delayed?" -> SELECT flight_number, flight_status, scheduled_departure, actual_departure FROM flights WHERE flight_status = \'Late\';',
+                '"Show me flights that are late" -> SELECT * FROM flights WHERE flight_status = \'Late\';',
+                '"Show me flights that are on time" -> SELECT * FROM flights WHERE flight_status = \'On Time Depature\';',
+                '"What flights are turning?" -> SELECT * FROM flights WHERE flight_status LIKE \'%Turning%\';',
+                '"Show me flights waiting on aircraft" -> SELECT * FROM flights WHERE flight_status = \'Waiting on Aircraft\';'
+            ],
+            'equipment': [
+                '"What equipment is available?" -> SELECT e.entity_id, e.equipment_type, el.location_code FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.equipment_status = \'Available\';',
+                '"Find pushback tractors" -> SELECT e.entity_id, e.equipment_type, el.location_code, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.equipment_type = \'Pushback Tractor\';',
+                '"What equipment needs maintenance?" -> SELECT e.entity_id, e.equipment_type, el.location_code FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.equipment_status LIKE \'%maintenance%\';',
+                '"Show me equipment at gate A8" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.location_code = \'A8\';'
+            ],
+            'personnel': [
+                '"Who is the cleaning lead?" -> SELECT e.employee_name, e.phone_number FROM employees e JOIN employee_roles er ON e.employee_id = er.employee_id WHERE er.role_name = \'Cleaning Lead\';',
+                '"What\'s John\'s next shift?" -> SELECT es.shift_start, es.shift_end, es.flight_id FROM employee_shifts es JOIN employees e ON es.employee_id = e.employee_id WHERE e.employee_name LIKE \'%John%\' AND es.shift_start > datetime(\'now\') ORDER BY es.shift_start LIMIT 1;',
+                '"Who is working on flight UA2406?" -> SELECT e.employee_name, e.phone_number FROM employees e JOIN employee_shifts es ON e.employee_id = es.employee_id JOIN flights f ON es.flight_id = f.flight_id WHERE f.flight_number = \'UA2406\';',
+                '"Find all supervisors" -> SELECT e.employee_name, e.phone_number FROM employees e JOIN employee_roles er ON e.employee_id = er.employee_id WHERE er.role_name LIKE \'%supervisor%\';'
+            ],
+            'location': [
+                '"Where is gate A12?" -> SELECT gate_number, terminal, gate_type FROM gates WHERE gate_number = \'A12\';',
+                '"What gates are available?" -> SELECT gate_number, terminal FROM gates WHERE is_active = 1;',
+                '"What gate is flight UA2406 using?" -> SELECT g.gate_number, g.terminal FROM gates g JOIN flights f ON g.gate_id = f.gate_id WHERE f.flight_number = \'UA2406\';'
+            ],
+            'time': [
+                '"When is the next departure?" -> SELECT flight_number, scheduled_departure FROM flights WHERE scheduled_departure > datetime(\'now\') ORDER BY scheduled_departure LIMIT 1;',
+                '"When does Maria\'s shift end?" -> SELECT es.shift_end FROM employee_shifts es JOIN employees e ON es.employee_id = e.employee_id WHERE e.employee_name LIKE \'%Maria%\';',
+                '"What time does boarding start for UA2406?" -> SELECT fo.boarding_start_time FROM flight_operations fo JOIN flights f ON fo.flight_id = f.flight_id WHERE f.flight_number = \'UA2406\';'
+            ]
+        }
+        
+        return enhanced_examples.get(query_type, enhanced_examples['flight_status'])
+
+    def _get_enhanced_schema_text(self, schema):
+        """Enhanced schema with relationships and context using dynamic values"""
+        from config import Config
+        if not getattr(Config, 'ENHANCED_SCHEMA_ENABLED', False):
+            # Fall back to original simple schema
+            return "\n".join([f"Table: {table}, Columns: {', '.join(columns)}" 
+                             for table, columns in schema.items()])
+        
+        # Get dynamic values and smart mappings
+        dynamic_values = self._get_dynamic_status_values()
+        smart_mappings = self._get_smart_mappings()
+        
+        # Format the actual values found in database
+        flight_status_values = ', '.join(dynamic_values['flight_status'])
+        equipment_status_values = ', '.join(dynamic_values['equipment_status']) 
+        role_values = ', '.join(dynamic_values['role_names'])
+        service_values = ', '.join(dynamic_values['service_types'])
+        
+        enhanced_schema = f"""
+ENHANCED DATABASE SCHEMA WITH RELATIONSHIPS (ACTUAL DATABASE):
+
+flights table (Core flight operations):
+- flight_id (VARCHAR, PRIMARY KEY): Unique flight identifier  
+- flight_number (VARCHAR): Flight number (e.g., 'UA2406', 'AA1234')
+- airline_code (VARCHAR): Airline code (e.g., 'UA', 'AA', 'DL')
+- flight_status (VARCHAR): ACTUAL VALUES IN DATABASE: {flight_status_values}
+- gate_id (INTEGER, FOREIGN KEY): Assigned gate (references gates.gate_id)
+- scheduled_departure, actual_departure (TIMESTAMP): Departure timing
+- scheduled_arrival, actual_arrival (TIMESTAMP): Arrival timing  
+- aircraft_type (VARCHAR): Aircraft model information
+- captain_name, cabin_lead_name, ramp_manager_name (VARCHAR): Key personnel
+→ LINKS TO: employee_shifts.flight_id, flight_services.flight_id, flight_operations.flight_id
+
+employees table (Personnel information):
+- employee_id (VARCHAR, PRIMARY KEY): Unique employee identifier
+- employee_name (VARCHAR): Full employee name
+- phone_number (VARCHAR): Contact information
+→ LINKS TO: employee_roles.employee_id, employee_shifts.employee_id
+
+employee_roles table (Job assignments):
+- employee_id (VARCHAR, FOREIGN KEY): Employee reference
+- role_name (VARCHAR): Job role ('Cleaning Lead', 'Ramp Agent', 'Supervisor')
+- employer_name (VARCHAR): Department/company name
+- effective_date, end_date (DATE): Role period
+
+employee_shifts table (Work schedules):
+- employee_id (VARCHAR, FOREIGN KEY): Employee reference  
+- shift_start, shift_end (TIMESTAMP): Shift timing
+- flight_id (VARCHAR, FOREIGN KEY): Assigned flight
+- shift_duration_hours (REAL): Shift length
+
+equipment table (Airport equipment):
+- entity_id (VARCHAR, PRIMARY KEY): Unique equipment identifier
+- equipment_type (VARCHAR): Type ('Pushback Tractor', 'Belt Loader', 'GPU')
+- equipment_model (VARCHAR): Specific model/brand
+- assigned_zone (VARCHAR): Work area assignment
+- primary_gates (VARCHAR): Primary gate assignments
+→ LINKS TO: equipment_locations.entity_id
+
+equipment_locations table (Equipment tracking):
+- entity_id (VARCHAR, FOREIGN KEY): Equipment reference
+- location_code (VARCHAR): Current location
+- equipment_status (VARCHAR): Status ('Available', 'Assigned', 'Maintenance')  
+- flight_id (VARCHAR, FOREIGN KEY): Currently assigned flight
+- timestamp (TIMESTAMP): Last update time
+
+gates table (Gate information):
+- gate_id (INTEGER, PRIMARY KEY): Unique gate identifier
+- gate_number (VARCHAR): Gate identifier (e.g., 'A12', 'B7')
+- terminal (VARCHAR): Terminal location
+- gate_type (VARCHAR): Gate type/capabilities
+- is_active (BOOLEAN): Gate operational status
+
+flight_services table (Service assignments):
+- flight_id (VARCHAR, FOREIGN KEY): Assigned flight
+- service_type (VARCHAR): Service type ('Cleaning', 'Catering', 'Fueling')
+- service_status (VARCHAR): Service status ('Scheduled', 'In Progress', 'Completed')
+- actual_start_time, actual_end_time (TIMESTAMP): Service timing
+
+flight_operations table (Operational details):
+- flight_id (VARCHAR, FOREIGN KEY): Flight reference
+- boarding_start_time (TIMESTAMP): Boarding start
+- pushback_target_time (TIMESTAMP): Planned pushback
+- ramp_team_members (TEXT): Team assignments
+
+BUSINESS CONTEXT:
+- Use flight_status (not status) for flight queries with EXACT values: {flight_status_values}
+- Employee names are in employee_name field (single field, not first/last) 
+- Equipment status is in equipment_locations table with values: {equipment_status_values}
+- Available role names: {role_values}
+- Available service types: {service_values}
+- Use JOINs to connect related data across tables
+- Focus on operational status for "current" or "now" queries
+
+SMART LANGUAGE MAPPINGS (User says → Database value):
+Flight Status:
+- "late/delayed/behind schedule" → 'Late'
+- "on time/punctual/scheduled" → 'On Time Depature' 
+- "turning/turnaround" → 'Turning'
+- "prep/preparing" → 'Turning Preparation'
+- "waiting for plane/aircraft delay" → 'Waiting on Aircraft'
+
+Equipment Status:
+- "available/free/ready" → 'Available'
+- "assigned/busy/in use" → 'Assigned'
+- "maintenance/repair/broken" → 'Maintenance'
+"""
+        
+        return enhanced_schema
+
+    def _get_reasoning_prompt(self, query_type):
+        """Add step-by-step reasoning based on query type"""
+        from config import Config
+        if not getattr(Config, 'ENHANCED_PROMPTS_ENABLED', False):
+            return ""
+        
+        reasoning_prompts = {
+            'flight_status': """
+REASONING STEPS FOR FLIGHT STATUS QUERIES:
+1. Extract the flight number from the user query
+2. Determine what specific status information is needed  
+3. Check if additional details like gates, times, or aircraft are requested
+4. Build query to get comprehensive flight information including related data
+""",
+            'equipment': """
+REASONING STEPS FOR EQUIPMENT QUERIES:  
+1. Identify the equipment type mentioned (tractor, belt loader, etc.)
+2. Determine if query is about assignment, availability, or location
+3. Check if specific flight or gate context is provided
+4. Consider equipment status and current assignment relationships
+""",
+            'personnel': """
+REASONING STEPS FOR PERSONNEL QUERIES:
+1. Identify if asking about specific person or role
+2. Determine what information is needed (contact, schedule, assignment)
+3. Check if flight-specific or general personnel query
+4. Include relevant contact and location information with JOINs if needed
+""",
+            'location': """
+REASONING STEPS FOR LOCATION QUERIES:
+1. Identify what location information is being requested
+2. Determine if asking about proximity or specific location
+3. Consider gate assignments and equipment positioning
+4. Focus on current operational locations and relationships
+""",
+            'time': """
+REASONING STEPS FOR TIME-BASED QUERIES:
+1. Identify if asking about schedules, shifts, or operational timing
+2. Determine if past, current, or future time context
+3. Consider operational status over scheduled times for "now" queries
+4. Focus on relevant time-based operational data with proper ordering
+"""
+        }
+        
+        return reasoning_prompts.get(query_type, reasoning_prompts['flight_status'])
+
+    def _get_domain_context(self, query_type):
+        """Get airport operations context for query type"""
+        from config import Config
+        if not getattr(Config, 'ENHANCED_PROMPTS_ENABLED', False):
+            return ""
+        
+        domain_contexts = {
+            'flight_status': """
+AIRPORT OPERATIONS CONTEXT FOR FLIGHT QUERIES:
+- Users typically want comprehensive flight info, not just status
+- Include gate, timing, and aircraft info when available  
+- "Delayed" should include actual times if available
+- Consider both departure and arrival information
+- Cross-reference with equipment and personnel assignments if relevant
+""",
+            'equipment': """
+AIRPORT OPERATIONS CONTEXT FOR EQUIPMENT QUERIES:
+- Equipment can be assigned, available, or under maintenance
+- Location proximity matters for operational efficiency
+- Consider operator assignments and availability
+- Pushback tractors are critical for departure operations
+- Include current assignment details when equipment is in use
+""",
+            'personnel': """
+AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
+- Include contact info, shift details, and current location
+- Cross-reference with current flight assignments
+- Consider break/availability status for operational queries
+- Cleaning leads, ramp agents, and supervisors have different responsibilities
+- Show assignment details when personnel are actively working
+"""
+        }
+        
+        return domain_contexts.get(query_type, "")
+    
     def parse_query_to_sql(self, user_query, schema, language='en', context_prompt=''):
         """Convert natural language query to SQL using OpenAI with conversation context"""
         try:
-            schema_text = "\n".join([f"Table: {table}, Columns: {', '.join(columns)}" 
-                                   for table, columns in schema.items()])
+            # NEW: Classify query type with smart fallback (keywords first, then AI)
+            query_type = self._classify_query_type_with_fallback(user_query)
+            logger.info(f"🔍 QUERY CLASSIFIED AS: {query_type}")
+            
+            # NEW: Enhanced schema if enabled, otherwise original behavior
+            schema_text = self._get_enhanced_schema_text(schema)
             
             # Language-specific prompts
             language_prompts = {
@@ -156,25 +640,53 @@ class AirportVoiceAssistant:
             }
             
             lang_config = language_prompts.get(language, language_prompts['en'])
-            examples_text = '\n            - '.join(lang_config['examples'])
+            
+            # NEW: Add enhanced examples if enabled (combines original + enhanced examples)
+            enhanced_examples = self._get_enhanced_examples(query_type, language)
+            if enhanced_examples:
+                # Combine original + enhanced examples for better coverage
+                all_examples = lang_config['examples'] + enhanced_examples
+                logger.info(f"📚 USING ENHANCED EXAMPLES: Added {len(enhanced_examples)} examples for {query_type}")
+            else:
+                all_examples = lang_config['examples']  # Use original if enhancement disabled
+            
+            examples_text = '\n            - '.join(all_examples)
+            
+            # NEW: Get optional reasoning and domain context
+            reasoning_prompt = self._get_reasoning_prompt(query_type)
+            domain_context = self._get_domain_context(query_type)
+            
+            # NEW: Get dynamic values for accurate prompt
+            dynamic_values = self._get_dynamic_status_values()
+            flight_status_list = ', '.join(dynamic_values['flight_status'])
+            equipment_status_list = ', '.join(dynamic_values['equipment_status'])
             
             prompt = f"""
+            {reasoning_prompt}
+            
             {lang_config['instruction']}
             
+            {domain_context}
+            
             IMPORTANT: Generate SQLite-compatible SQL queries only. Available tables and key columns:
-            - flights: flight_number, airline, status, departure_gate, arrival_gate, scheduled_departure, actual_departure, aircraft_type
-            - employees: employee_id, first_name, last_name, department, role, status, current_location, phone_number
-            - equipment: equipment_id, equipment_type, current_location, status, assigned_flight, operator_id
-            - gates: gate_number, terminal, status, current_flight
-            - assignments: flight_number, employee_id, equipment_id, assignment_type, status
+            - flights: flight_id, flight_number, airline_code, flight_status, gate_id, scheduled_departure, actual_departure, aircraft_type
+            - employees: employee_id, employee_name, phone_number
+            - employee_roles: employee_id, role_name, employer_name
+            - employee_shifts: employee_id, shift_start, shift_end, flight_id
+            - equipment: entity_id, equipment_type, equipment_model, assigned_zone
+            - equipment_locations: entity_id, location_code, equipment_status, flight_id
+            - gates: gate_id, gate_number, terminal, gate_type, is_active
+            - flight_services: flight_id, service_type, service_status
             
             Use simple SQLite syntax:
-            - Use LIKE for status queries (case insensitive): status LIKE '%delay%', status LIKE '%board%'
+            - For status queries, use exact matches for ACTUAL database values: flight_status = 'Late', flight_status = 'On Time Depature'
+            - ACTUAL flight_status values in database: {flight_status_list}
+            - ACTUAL equipment_status values in database: {equipment_status_list}
             - For flight numbers: Try exact match first, then LIKE pattern if needed
               * Exact: flight_number = 'UA2406'
               * Pattern: flight_number LIKE '%UA406%' (for partial matches from speech recognition)
               * Always prefer exact matches when the full flight number is clear
-            - Use || for concatenation: first_name || ' ' || last_name
+            - Use || for concatenation when needed: employee_name || ' - ' || role_name
             - Always use LIKE when searching for status, department, or descriptive fields
             - For operational questions about "today", "now", or "current", focus on STATUS rather than dates
             - When users ask about delayed/on-time flights "today", they want current operational status regardless of schedule date
@@ -783,7 +1295,6 @@ assistant = AirportVoiceAssistant()
 @app.route('/')
 def index():
     """Serve the main web interface"""
-    import time
     return render_template('index.html', timestamp=int(time.time() * 1000))
 
 @app.route('/test-hybrid-speech.html')

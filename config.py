@@ -55,6 +55,11 @@ class Config:
     UI_THEME = os.getenv('UI_THEME', 'dark')
     ENABLE_DEBUG_UI = os.getenv('ENABLE_DEBUG_UI', 'True').lower() == 'true'
     
+    # Text-to-SQL Enhancement Flags (for safe rollback)
+    ENHANCED_PROMPTS_ENABLED = os.getenv('ENHANCED_PROMPTS_ENABLED', 'True').lower() == 'true'
+    ENHANCED_SCHEMA_ENABLED = os.getenv('ENHANCED_SCHEMA_ENABLED', 'True').lower() == 'true'
+    QUERY_CLASSIFICATION_ENABLED = os.getenv('QUERY_CLASSIFICATION_ENABLED', 'True').lower() == 'true'
+    
     @classmethod
     def validate_config(cls):
         """Validate configuration settings"""
