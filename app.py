@@ -598,6 +598,32 @@ Category:"""
                 'ramp agent': 'Ramp Agent',
                 'ground crew': 'Ramp Agent',
                 'baggage handler': 'Ramp Agent'
+            },
+            'temporal_vocabulary': {
+                # Landing/Arrival terms
+                'land': 'actual_arrival',
+                'landed': 'actual_arrival', 
+                'landing': 'actual_arrival',
+                'arrive': 'actual_arrival',
+                'arrived': 'actual_arrival',
+                'arrival': 'actual_arrival',
+                
+                # Departure terms  
+                'depart': 'actual_departure',
+                'departed': 'actual_departure',
+                'departure': 'actual_departure',
+                'leave': 'actual_departure',
+                'left': 'actual_departure',
+                'take off': 'actual_departure',
+                
+                # Temporal ordering
+                'most recent': 'ORDER BY {column} DESC LIMIT 1',
+                'latest': 'ORDER BY {column} DESC LIMIT 1',
+                'last': 'ORDER BY {column} DESC LIMIT 1',
+                'newest': 'ORDER BY {column} DESC LIMIT 1',
+                'earliest': 'ORDER BY {column} ASC LIMIT 1',
+                'first': 'ORDER BY {column} ASC LIMIT 1',
+                'oldest': 'ORDER BY {column} ASC LIMIT 1'
             }
         }
         
@@ -624,7 +650,12 @@ Category:"""
                 '"Show me flights that are late" -> SELECT * FROM flights WHERE flight_status = \'Late\';',
                 '"Show me flights that are on time" -> SELECT * FROM flights WHERE flight_status = \'On Time Depature\';',
                 '"What flights are turning?" -> SELECT * FROM flights WHERE flight_status LIKE \'%Turning%\';',
-                '"Show me flights waiting on aircraft" -> SELECT * FROM flights WHERE flight_status = \'Waiting on Aircraft\';'
+                '"Show me flights waiting on aircraft" -> SELECT * FROM flights WHERE flight_status = \'Waiting on Aircraft\';',
+                '"What was the most recent flight to land?" -> SELECT * FROM flights WHERE actual_arrival IS NOT NULL ORDER BY actual_arrival DESC LIMIT 1;',
+                '"Which flight landed last?" -> SELECT * FROM flights WHERE actual_arrival IS NOT NULL ORDER BY actual_arrival DESC LIMIT 1;',
+                '"Show me the latest arrival" -> SELECT * FROM flights WHERE actual_arrival IS NOT NULL ORDER BY actual_arrival DESC LIMIT 1;',
+                '"What was the last flight to depart?" -> SELECT * FROM flights WHERE actual_departure IS NOT NULL ORDER BY actual_departure DESC LIMIT 1;',
+                '"Most recent departure" -> SELECT * FROM flights WHERE actual_departure IS NOT NULL ORDER BY actual_departure DESC LIMIT 1;'
             ],
             'equipment': [
                 '"What equipment is available?" -> SELECT e.entity_id, e.equipment_type, el.location_code FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.equipment_status = \'Available\';',
@@ -758,6 +789,13 @@ Equipment Status:
 - "available/free/ready" → 'Available'
 - "assigned/busy/in use" → 'Assigned'
 - "maintenance/repair/broken" → 'Maintenance'
+
+Temporal Queries (for ORDER BY patterns):
+- "land/landed/landing/arrive/arrived" → use actual_arrival column
+- "depart/departed/departure/leave/left/take off" → use actual_departure column  
+- "most recent/latest/last" → ORDER BY [column] DESC LIMIT 1
+- "earliest/first/oldest" → ORDER BY [column] ASC LIMIT 1
+- Always use WHERE [column] IS NOT NULL for temporal queries to filter out null timestamps
 """
         
         return enhanced_schema
@@ -1404,7 +1442,7 @@ Soyez amical et spécifique, évitez le jargon technique."""
             (r'\bfright\b', 'flight'),                    # "fright" → "flight"
             (r'\bplight\b', 'flight'),                    # "plight" → "flight"
             (r'\bblast\b', 'flight'),                     # "blast" → "flight"
-            (r'\bflight\s+to\b', 'flight'),               # "flight to" → "flight"
+            (r'\bflight\s+to\s+(?!land|arrive|depart|take)', 'flight'),  # "flight to" → "flight" (but preserve "to land/arrive")
             
             # Common number confusions (2406 variants)
             (r'\b2046\b', '2406'),                        # "2046" → "2406"
