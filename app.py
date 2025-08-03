@@ -756,11 +756,13 @@ gates table (Gate information):
 - gate_type (VARCHAR): Gate type/capabilities
 - is_active (BOOLEAN): Gate operational status
 
-flight_services table (Service assignments):
+flight_services table (Service assignments with provider companies):
 - flight_id (VARCHAR, FOREIGN KEY): Assigned flight
-- service_type (VARCHAR): Service type ('Cleaning', 'Catering', 'Fueling')
-- service_status (VARCHAR): Service status ('Scheduled', 'In Progress', 'Completed')
+- service_type (VARCHAR): Service type ('CATERING', 'CLEANING', 'FUEL')
+- provider_company (VARCHAR): Company providing the service (e.g., 'Flying Food Group', 'ABM Aviation', 'Swissport')
+- service_status (VARCHAR): Service status ('SCHEDULED', 'IN_PROGRESS', 'COMPLETED')
 - actual_start_time, actual_end_time (TIMESTAMP): Service timing
+→ USE THIS TABLE FOR "provider company", "service provider" queries with JOIN to flights
 
 flight_operations table (Operational details):
 - flight_id (VARCHAR, FOREIGN KEY): Flight reference
@@ -790,9 +792,13 @@ Equipment Status:
 - "assigned/busy/in use" → 'Assigned'
 - "maintenance/repair/broken" → 'Maintenance'
 
-Airline/Provider Company:
-- "provider company/operator/carrier/airline/company/runs/operates" → use airline_code column
-- "United Airlines/United" → 'United' (matches airline_code values)
+Service Provider Companies (flight_services table):
+- "provider company/provider/service provider/companies providing services" → use flight_services.provider_company with JOIN
+- Examples: "Flying Food Group", "ABM Aviation", "Swissport" (actual service providers)
+
+Airline/Flight Operator (flights table):
+- "airline/carrier/flight operator/operates flight" → use airline_code column
+- "United Airlines/United" → 'United' (flight operator/airline)
 
 Temporal Queries (for ORDER BY patterns):
 - "land/landed/landing/arrive/arrived" → use actual_arrival column
@@ -923,14 +929,17 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
                         '"What flights are on time now?" -> SELECT * FROM flights WHERE status LIKE \'%time%\';',
                         '"Show me all United Airlines flights" -> SELECT * FROM flights WHERE airline_code = \'United\';',
                         
-                        # PROVIDER COMPANY / AIRLINE QUERIES
-                        '"What is the provider company for flight UA1214?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1214\';',
+                        # PROVIDER COMPANY QUERIES (Service Providers)
+                        '"What is the provider company for flight UA1214?" -> SELECT fs.service_type, fs.provider_company FROM flight_services fs JOIN flights f ON fs.flight_id = f.flight_id WHERE f.flight_number = \'UA1214\';',
+                        '"What are the provider companies for flight UA2406?" -> SELECT fs.service_type, fs.provider_company FROM flight_services fs JOIN flights f ON fs.flight_id = f.flight_id WHERE f.flight_number = \'UA2406\';',
+                        '"Which companies provide services for flight 1214?" -> SELECT fs.service_type, fs.provider_company FROM flight_services fs JOIN flights f ON fs.flight_id = f.flight_id WHERE f.flight_number LIKE \'%1214%\';',
+                        '"What service providers work on flight UA1214?" -> SELECT fs.service_type, fs.provider_company FROM flight_services fs JOIN flights f ON fs.flight_id = f.flight_id WHERE f.flight_number = \'UA1214\';',
+                        
+                        # AIRLINE QUERIES (Flight Operator)
                         '"What is the airline for flight UA2406?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA2406\';',
                         '"Which airline operates flight UA406?" -> SELECT airline_code FROM flights WHERE flight_number LIKE \'%UA406%\';',
-                        '"What company operates flight 1214?" -> SELECT airline_code FROM flights WHERE flight_number LIKE \'%1214%\';',
                         '"Who is the carrier for flight UA1214?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1214\';',
                         '"What airline company runs flight 2406?" -> SELECT airline_code FROM flights WHERE flight_number LIKE \'%2406%\';',
-                        '"Provider company of flight UA1234?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1234\';',
                         
                         '"What equipment is available?" -> SELECT * FROM equipment WHERE status = \'available\';',
                         '"Who is working in baggage handling?" -> SELECT * FROM employees WHERE department = \'baggage\';'
@@ -984,20 +993,22 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
             
             IMPORTANT: Generate SQLite-compatible SQL queries only. Available tables and key columns:
             - flights: flight_id, flight_number, airline_code, flight_status, gate_id, scheduled_departure, actual_departure, aircraft_type
+            - flight_services: flight_id, service_type, provider_company, service_status (USE FOR "provider company" queries with JOIN to flights)
             - employees: employee_id, employee_name, phone_number
             - employee_roles: employee_id, role_name, employer_name
             - employee_shifts: employee_id, shift_start, shift_end, flight_id
             - equipment: entity_id, equipment_type, equipment_model, assigned_zone
             - equipment_locations: entity_id, location_code, equipment_status, flight_id
             - gates: gate_id, gate_number, terminal, gate_type, is_active
-            - flight_services: flight_id, service_type, service_status
             
             Use simple SQLite syntax:
             - For status queries, use exact matches for ACTUAL database values: flight_status = 'Late', flight_status = 'On Time Depature'
             - ACTUAL flight_status values in database: {flight_status_list}
             - ACTUAL equipment_status values in database: {equipment_status_list}
-            - For AIRLINE/PROVIDER COMPANY queries: Use airline_code column for "provider company", "airline", "carrier", "operator", "company" questions
-              * Example: "What is the provider company for flight UA1214?" → SELECT airline_code FROM flights WHERE flight_number = 'UA1214'
+            - For SERVICE PROVIDER COMPANY queries: Use flight_services table for "provider company", "service provider", "companies providing services"
+              * Example: "What is the provider company for flight UA1214?" → SELECT fs.service_type, fs.provider_company FROM flight_services fs JOIN flights f ON fs.flight_id = f.flight_id WHERE f.flight_number = 'UA1214'
+            - For AIRLINE/FLIGHT OPERATOR queries: Use airline_code column for "airline", "carrier", "flight operator"
+              * Example: "What airline operates flight UA1214?" → SELECT airline_code FROM flights WHERE flight_number = 'UA1214'
             - For flight numbers: Try exact match first, then LIKE pattern if needed
               * Exact: flight_number = 'UA2406'
               * Pattern: flight_number LIKE '%UA406%' (for partial matches from speech recognition)
