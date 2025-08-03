@@ -113,12 +113,41 @@ python app.py
 
 ## 🔧 API Endpoints
 
-### Health Check
+### Enhanced API v2 (Recommended)
+
+#### Interactive API Documentation
+- **Swagger UI**: `http://localhost:3000/docs`
+- **OpenAPI Spec**: `http://localhost:3000/api/v2/docs`
+
+#### Enhanced Query Processing
+```bash
+POST /api/v2/query
+Content-Type: application/json
+{
+  "query": "which aircraft are really struggling with timing today",
+  "language": "en",
+  "options": {
+    "include_metadata": true,
+    "include_debug": true,
+    "include_performance": true
+  }
+}
+```
+
+#### System Health & Analytics
+```bash
+GET /api/v2/health        # Enhanced health check with feature status
+GET /api/v2/analytics     # System performance metrics
+```
+
+### Legacy API v1 (Backward Compatible)
+
+#### Health Check
 ```bash
 GET /api/health
 ```
 
-### Voice Query Processing
+#### Voice Query Processing
 ```bash
 POST /api/query
 Content-Type: application/json
@@ -127,7 +156,7 @@ Content-Type: application/json
 }
 ```
 
-### Test Queries
+#### Test Queries
 ```bash
 GET /api/test
 ```
@@ -174,15 +203,67 @@ Frontier/
 - Console commands: `exportConversation()`, `getMetrics()`
 
 #### API Testing
+
+##### PowerShell Testing (Recommended)
+```powershell
+# Test enhanced v2 API
+$body = @{
+    query = "which aircraft are really struggling with timing today"
+    language = "en"
+    options = @{
+        include_metadata = $true
+        include_debug = $true
+        include_performance = $true
+    }
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/v2/query" -Method POST -Body $body -ContentType "application/json"
+
+# System health and analytics
+Invoke-RestMethod -Uri "http://localhost:3000/api/v2/health" -Method GET
+Invoke-RestMethod -Uri "http://localhost:3000/api/v2/analytics" -Method GET
+```
+
+##### Traditional cURL Testing
 ```bash
 # Health check
 curl http://localhost:3000/api/health
 
-# Test query
+# Test legacy API
 curl -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "What is the status of flight UA2406?"}'
+
+# Test enhanced v2 API
+curl -X POST http://localhost:3000/api/v2/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "show me available pushback tractors",
+    "language": "en",
+    "options": {
+      "include_metadata": true,
+      "include_debug": true
+    }
+  }'
 ```
+
+### 📊 Performance Analysis
+
+For detailed AI call patterns, caching performance, and system optimization insights, see:
+**[API Performance Analysis & Testing Guide](API_PERFORMANCE_ANALYSIS.md)**
+
+#### Key Performance Metrics
+- **AI Efficiency**: 90% of queries use fast keyword classification (0 AI calls)
+- **Smart Fallback**: 10% use AI classification for creative language (+1 AI call)
+- **Cache Performance**: 90%+ hit rate after initial discovery
+- **Response Quality**: Confidence-based uncertainty acknowledgment
+
+#### Swagger UI Testing
+Access the interactive API documentation at `http://localhost:3000/docs` to:
+- Test all API endpoints with a visual interface
+- View request/response schemas
+- Copy working code examples
+- Explore system capabilities interactively
 
 ## 🔒 Security & Privacy
 

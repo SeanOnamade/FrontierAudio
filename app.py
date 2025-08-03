@@ -1533,5 +1533,526 @@ def equipment_status():
         logger.error(f"Equipment status error: {e}")
         return jsonify({"error": str(e), "equipment": []}), 500
 
+# =============================================================================
+# API v2 ENDPOINTS - Enhanced with metadata, analytics, and monitoring
+# =============================================================================
+
+@app.route('/api/v2/query', methods=['POST'])
+def process_voice_query_v2():
+    """Enhanced v2 query processing with detailed metadata and analytics"""
+    start_time = time.time()
+    processing_steps = []
+    
+    try:
+        data = request.get_json()
+        user_query = data.get('query', '').strip()
+        language = data.get('language', None)
+        session_id = data.get('sessionId', None)
+        context_data = data.get('contextData', None)
+        
+        # v2 specific options
+        options = data.get('options', {})
+        include_metadata = options.get('include_metadata', True)
+        include_debug = options.get('include_debug', False)
+        include_performance = options.get('include_performance', True)
+        
+        step_start = time.time()
+        
+        if not user_query:
+            error_responses = {
+                'en': "I didn't hear your question. Could you please repeat it?",
+                'es': "No escuché tu pregunta. ¿Podrías repetirla por favor?",
+                'fr': "Je n'ai pas entendu votre question. Pourriez-vous la répéter s'il vous plaît?"
+            }
+            detected_lang = language or assistant.detect_language(user_query) or 'en'
+            
+            error_response = {
+                "error": "No query provided",
+                "response": error_responses.get(detected_lang, error_responses['en']),
+                "language": detected_lang,
+                "api_version": "2.0"
+            }
+            
+            if include_metadata:
+                error_response["metadata"] = {
+                    "processing_time_ms": round((time.time() - start_time) * 1000, 2),
+                    "error_type": "validation_error"
+                }
+            
+            return jsonify(error_response), 400
+        
+        processing_steps.append({
+            "step": "validation",
+            "duration_ms": round((time.time() - step_start) * 1000, 2)
+        })
+        
+        # Track original query for debug info
+        original_query = user_query
+        
+        # Process the query with context (same as v1)
+        step_start = time.time()
+        result = assistant.process_query(user_query, language, session_id, context_data)
+        processing_steps.append({
+            "step": "query_processing",
+            "duration_ms": round((time.time() - step_start) * 1000, 2)
+        })
+        
+        # Store conversation exchange if session_id provided
+        if session_id and result.get('response'):
+            assistant.store_conversation_exchange(session_id, user_query, result['response'])
+        
+        # Add confidence disclosure if needed (same as v1)
+        if result['confidence'] < assistant.confidence_threshold:
+            confidence_prefixes = {
+                'en': "I'm not entirely sure, but",
+                'es': "No estoy completamente seguro, pero",
+                'fr': "Je ne suis pas entièrement sûr, mais"
+            }
+            prefix = confidence_prefixes.get(result.get('language', 'en'), confidence_prefixes['en'])
+            result['response'] = f"{prefix} {result['response']}"
+        
+        # Build enhanced v2 response
+        total_time_ms = round((time.time() - start_time) * 1000, 2)
+        
+        enhanced_response = {
+            "response": result["response"],
+            "confidence": result["confidence"],
+            "language": result["language"],
+            "api_version": "2.0"
+        }
+        
+        # Add detailed metadata if requested
+        if include_metadata:
+            features_used = []
+            if hasattr(assistant, 'dynamic_values_cache') and assistant.dynamic_values_cache:
+                features_used.append("dynamic_values")
+            if hasattr(assistant, 'smart_mappings_cache') and assistant.smart_mappings_cache:
+                features_used.append("smart_mappings")
+            
+            enhanced_response["metadata"] = {
+                "query_classification": result.get("query_type", "unknown"),
+                "features_used": features_used,
+                "cache_status": "hit" if features_used else "miss",
+                "processing_steps": processing_steps,
+                "total_processing_time_ms": total_time_ms,
+                "feature_flags": {
+                    "enhanced_prompts": getattr(assistant, '_enhanced_prompts_enabled', True),
+                    "dynamic_values": getattr(assistant, '_dynamic_values_enabled', True),
+                    "query_classification": getattr(assistant, '_classification_enabled', True)
+                }
+            }
+            
+            if result.get('sql_query'):
+                enhanced_response["metadata"]["optimizations_applied"] = [
+                    "Dynamic database value discovery",
+                    "Smart language mappings"
+                ]
+        
+        # Add structured data section
+        if include_performance and result.get('sql_query'):
+            enhanced_response["data"] = {
+                "sql_query": result["sql_query"],
+                "result_count": result.get("result_count", 0),
+                "execution_time_ms": result.get("latency", 0) * 1000,
+                "query_complexity": result.get("query_type", "simple")
+            }
+        
+        # Add debug information if requested
+        if include_debug:
+            enhanced_response["debug"] = {
+                "original_query": original_query,
+                "preprocessed_query": user_query,
+                "session_id": session_id,
+                "classification_method": "keyword_based",  # Could be enhanced later
+                "confidence_threshold": assistant.confidence_threshold
+            }
+        
+        return jsonify(enhanced_response)
+        
+    except Exception as e:
+        logger.error(f"v2 Query processing error: {e}")
+        
+        error_response = {
+            "error": str(e),
+            "response": "I'm having technical difficulties right now. Please try again.",
+            "language": data.get('language', 'en') if 'data' in locals() else 'en',
+            "api_version": "2.0"
+        }
+        
+        if include_metadata:
+            error_response["metadata"] = {
+                "processing_time_ms": round((time.time() - start_time) * 1000, 2),
+                "error_type": "processing_error",
+                "processing_steps": processing_steps
+            }
+        
+        return jsonify(error_response), 500
+
+@app.route('/api/v2/health', methods=['GET'])
+def health_check_v2():
+    """Enhanced health check with detailed system status"""
+    start_time = time.time()
+    
+    try:
+        # Test database connection
+        schema = assistant.get_database_schema()
+        
+        # Check cache status
+        cache_status = {
+            "dynamic_values_cached": bool(assistant.dynamic_values_cache),
+            "smart_mappings_cached": bool(assistant.smart_mappings_cache)
+        }
+        
+        # Feature flag status
+        from config import Config
+        feature_flags = {
+            "enhanced_prompts": Config.ENHANCED_PROMPTS_ENABLED,
+            "enhanced_schema": Config.ENHANCED_SCHEMA_ENABLED,
+            "query_classification": Config.QUERY_CLASSIFICATION_ENABLED
+        }
+        
+        response_time_ms = round((time.time() - start_time) * 1000, 2)
+        
+        return jsonify({
+            "status": "healthy",
+            "api_version": "2.0",
+            "database": {
+                "connected": schema is not None,
+                "tables_found": len(schema) if schema else 0,
+                "response_time_ms": response_time_ms
+            },
+            "cache": cache_status,
+            "features": feature_flags,
+            "system": {
+                "response_time_ms": response_time_ms,
+                "timestamp": time.time()
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "api_version": "2.0",
+            "error": str(e),
+            "timestamp": time.time()
+        }), 500
+
+@app.route('/api/v2/analytics', methods=['GET'])
+def get_analytics_v2():
+    """Get usage analytics and performance metrics"""
+    try:
+        from config import Config
+        # Basic analytics (can be enhanced with real metrics collection later)
+        analytics = {
+            "api_version": "2.0",
+            "performance": {
+                "cache_status": {
+                    "dynamic_values_cache_size": len(assistant.dynamic_values_cache),
+                    "smart_mappings_cache_size": len(assistant.smart_mappings_cache)
+                },
+                "session_management": {
+                    "active_sessions": len(assistant.conversation_sessions)
+                }
+            },
+            "features": {
+                "enhanced_prompts_enabled": getattr(Config, 'ENHANCED_PROMPTS_ENABLED', True),
+                "enhanced_schema_enabled": getattr(Config, 'ENHANCED_SCHEMA_ENABLED', True),
+                "query_classification_enabled": getattr(Config, 'QUERY_CLASSIFICATION_ENABLED', True)
+            },
+            "system_info": {
+                "cache_timeout_seconds": assistant.cache_timeout,
+                "session_timeout_seconds": assistant.session_timeout,
+                "confidence_threshold": assistant.confidence_threshold
+            },
+            "timestamp": time.time()
+        }
+        
+        return jsonify(analytics)
+        
+    except Exception as e:
+        logger.error(f"Analytics error: {e}")
+        return jsonify({
+            "error": str(e),
+            "api_version": "2.0",
+            "timestamp": time.time()
+        }), 500
+
+@app.route('/api/v2/docs', methods=['GET'])
+def api_documentation():
+    """OpenAPI documentation for v2 API"""
+    openapi_spec = {
+        "openapi": "3.0.0",
+        "info": {
+            "title": "FrontierAudio Voice Assistant API",
+            "version": "2.0.0",
+            "description": "Natural language to SQL conversion for airport operations with enhanced analytics and monitoring",
+            "contact": {
+                "name": "FrontierAudio API Support",
+                "url": "https://github.com/frontieraudio"
+            }
+        },
+        "servers": [
+            {
+                "url": "http://localhost:3000",
+                "description": "Development server"
+            }
+        ],
+        "paths": {
+            "/api/v2/query": {
+                "post": {
+                    "summary": "Process natural language query",
+                    "description": "Convert natural language to SQL and return enhanced results with metadata",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["query"],
+                                    "properties": {
+                                        "query": {
+                                            "type": "string",
+                                            "description": "Natural language query",
+                                            "example": "What flights are delayed?"
+                                        },
+                                        "language": {
+                                            "type": "string",
+                                            "enum": ["en", "es", "fr"],
+                                            "description": "Language for response",
+                                            "default": "en"
+                                        },
+                                        "sessionId": {
+                                            "type": "string",
+                                            "description": "Session ID for conversation context"
+                                        },
+                                        "options": {
+                                            "type": "object",
+                                            "properties": {
+                                                "include_metadata": {
+                                                    "type": "boolean",
+                                                    "default": True,
+                                                    "description": "Include detailed processing metadata"
+                                                },
+                                                "include_debug": {
+                                                    "type": "boolean",
+                                                    "default": False,
+                                                    "description": "Include debug information"
+                                                },
+                                                "include_performance": {
+                                                    "type": "boolean",
+                                                    "default": True,
+                                                    "description": "Include performance metrics"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Successful query processing",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "response": {
+                                                "type": "string",
+                                                "description": "Natural language response"
+                                            },
+                                            "confidence": {
+                                                "type": "number",
+                                                "minimum": 0,
+                                                "maximum": 1,
+                                                "description": "Confidence score for the response"
+                                            },
+                                            "language": {
+                                                "type": "string",
+                                                "description": "Detected or specified language"
+                                            },
+                                            "api_version": {
+                                                "type": "string",
+                                                "example": "2.0"
+                                            },
+                                            "metadata": {
+                                                "type": "object",
+                                                "description": "Processing metadata and analytics"
+                                            },
+                                            "data": {
+                                                "type": "object",
+                                                "description": "Structured query data and results"
+                                            },
+                                            "debug": {
+                                                "type": "object",
+                                                "description": "Debug information (when requested)"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "400": {
+                            "description": "Bad request - invalid input"
+                        },
+                        "500": {
+                            "description": "Internal server error"
+                        }
+                    }
+                }
+            },
+            "/api/v2/health": {
+                "get": {
+                    "summary": "Health check with system status",
+                    "description": "Get detailed system health information including database, cache, and feature status",
+                    "responses": {
+                        "200": {
+                            "description": "System is healthy",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {
+                                                "type": "string",
+                                                "example": "healthy"
+                                            },
+                                            "api_version": {
+                                                "type": "string",
+                                                "example": "2.0"
+                                            },
+                                            "database": {
+                                                "type": "object",
+                                                "description": "Database connection status"
+                                            },
+                                            "cache": {
+                                                "type": "object",
+                                                "description": "Cache status information"
+                                            },
+                                            "features": {
+                                                "type": "object",
+                                                "description": "Feature flag status"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "500": {
+                            "description": "System is unhealthy"
+                        }
+                    }
+                }
+            },
+            "/api/v2/analytics": {
+                "get": {
+                    "summary": "Usage analytics and performance metrics",
+                    "description": "Get system analytics including performance metrics, cache status, and feature usage",
+                    "responses": {
+                        "200": {
+                            "description": "Analytics data",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "api_version": {
+                                                "type": "string",
+                                                "example": "2.0"
+                                            },
+                                            "performance": {
+                                                "type": "object",
+                                                "description": "Performance metrics"
+                                            },
+                                            "features": {
+                                                "type": "object",
+                                                "description": "Feature usage statistics"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "components": {
+            "schemas": {
+                "QueryRequest": {
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language query"
+                        },
+                        "language": {
+                            "type": "string",
+                            "enum": ["en", "es", "fr"]
+                        }
+                    }
+                },
+                "QueryResponse": {
+                    "type": "object",
+                    "properties": {
+                        "response": {
+                            "type": "string"
+                        },
+                        "confidence": {
+                            "type": "number"
+                        },
+                        "language": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return jsonify(openapi_spec)
+
+@app.route('/docs')
+def swagger_ui():
+    """Serve Swagger UI for API documentation"""
+    swagger_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>FrontierAudio API Documentation</title>
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui.css" />
+        <style>
+            html {{ box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }}
+            *, *:before, *:after {{ box-sizing: inherit; }}
+            body {{ margin:0; background: #fafafa; }}
+        </style>
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui-bundle.js"></script>
+        <script src="https://unpkg.com/swagger-ui-dist@3.52.5/swagger-ui-standalone-preset.js"></script>
+        <script>
+            window.onload = function() {{
+                const ui = SwaggerUIBundle({{
+                    url: '/api/v2/docs',
+                    dom_id: '#swagger-ui',
+                    deepLinking: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl
+                    ],
+                    layout: "StandaloneLayout"
+                }});
+            }};
+        </script>
+    </body>
+    </html>
+    """
+    return swagger_html
+
 if __name__ == '__main__':
     app.run(debug=False, host='localhost', port=3000) 
