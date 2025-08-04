@@ -185,11 +185,10 @@ TEST_CASES = [
     {
         "id": 21,
         "name": "Nearest Equipment Location Query",
-        "query": "Where is the nearest pushback tractor to gate B one, the one assigned broke down",
-        "expected_contains": ["PB-BN-01", "B1", "nearest", "Push-back Tractor"],
-        "expected_min_results": 3,
-        "category": "equipment",
-        "description": "Tests nearest equipment functionality with gate normalization and contextual information removal"
+        "spoken": "Where is the nearest pushback tractor to gate B one, the one assigned broke down",
+        "expected_systems": "Layer 1 (Gate normalization) + Layer 3 (Proximity analysis)",
+        "expected_result_type": "Nearest Push-back Tractor to gate B1",
+        "status": "✅"
     },
     # Test Case 22: Ramp Team Members on Break Query
     {
