@@ -2,7 +2,7 @@
 
 This document outlines comprehensive test cases for the voice assistant functionality, covering various query types, speech recognition scenarios, and system capabilities.
 
-## Test Case Overview (23 Total)
+## Test Case Overview (24 Total)
 
 ⚠️ **IMPORTANT**: These test cases use the REAL database schema from `united_airlines_normalized (Gauntlet).db`. 
 **Schema differs significantly from sample database** - verify actual data exists before testing.
@@ -260,6 +260,35 @@ ORDER BY es.shift_start LIMIT 1;
 - Modified generate_transparent_explanation to return None for next assignment queries
 - Updated format_response_with_transparency to always use simple format_response for next assignment queries
 - Added critical instruction rules for next assignment query SQL generation
+
+### Test Case 24: Ramp Team Assignment Query ✅
+**Spoken Query**: "What ramp team members are assigned to flight 1214"
+**Expected SQL**: 
+```sql
+SELECT f.ramp_team_members 
+FROM flight_operations f 
+JOIN flights fl ON f.flight_id = fl.flight_id 
+WHERE fl.flight_number = 'UA1214';
+```
+**Systems Used**: 
+- Special case classification for ramp team assignment queries (forced equipment category)
+- Flight number correction ("1214" → "UA1214")
+- flight_operations table with ramp_team_members field
+- Enhanced classification logic with priority ordering
+- Direct team member list retrieval
+
+**Expected Results**: 
+- Returns formatted list of ramp team members with phone numbers
+- Response: "For flight UA1214, the ramp team members assigned are Val Davis, Logan Robinson, and Lane Lee. Here are their details: **Val Davis**: You can reach him at 312-555-7491. **Logan Robinson**: His contact number is 312-555-8026. **Lane Lee**: You can call him at 312-555-4104."
+- High confidence score (0.9) indicating successful data retrieval
+- Fast response time (3-5 seconds)
+
+**Fix Details**: 
+- Added special case classification rules in all three classification methods (_check_enhanced_phrases, _check_enhanced_keywords, _classify_query_type_keywords)
+- Prioritized ramp team assignment detection over break queries
+- Added specific SQL examples for ramp team assignment in equipment category
+- Fixed classification order to check "assigned/assignment" before "break" keywords
+- Enhanced equipment examples with flight_operations table queries
 
 ---
 
