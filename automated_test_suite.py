@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Automated Test Suite for Voice Assistant Test Cases
-Tests all 17 test cases via the Flask API
+Automated Test Suite for Voice Assistant API
 
-This script validates the 3-layer enhanced speech processing architecture:
-- Layer 1: Hard-coded pattern normalization
-- Layer 2: Dynamic database fallback 
-- Layer 3: Enhanced AI integration
+This script tests the voice assistant API endpoints with a comprehensive set of test cases
+covering various query types, speech recognition scenarios, and system capabilities.
 
-Usage: python automated_test_suite.py
-Prerequisites: Flask app running on localhost:3000
+Total Test Cases: 23
+- Basic Functionality (1-5): Core voice recognition and query processing  
+- Complex Tests (6-23): Advanced scenarios including multi-table joins, speech variations
 """
 
 import requests
@@ -21,7 +19,7 @@ from datetime import datetime
 BASE_URL = "http://localhost:3000"
 QUERY_ENDPOINT = f"{BASE_URL}/api/query"
 
-# All 17 test cases from VOICE_ASSISTANT_TEST_CASES.md
+# Test Cases - Total: 23
 TEST_CASES = [
     {
         "id": 1,
@@ -157,6 +155,58 @@ TEST_CASES = [
         "spoken": "How many power units are in zone B South?",
         "expected_systems": "Layer 1 + Layer 3",
         "expected_result_type": "4 GPUs in B-South",
+        "status": "✅"
+    },
+    {
+        "id": 18,
+        "name": "Pushback Tractor Assignment with Status",
+        "spoken": "What pushback tractor is assigned to flight 1214",
+        "expected_systems": "Layer 1 (Flight/Equipment normalization) + Layer 3 (Enhanced AI with status)",
+        "expected_result_type": "4 assigned tractors with status",
+        "status": "✅"
+    },
+    {
+        "id": 19,
+        "name": "Cleaning Lead Personnel Assignment",
+        "spoken": "Who is the cleaning lead for flight 1214",
+        "expected_systems": "Layer 1 (Flight number correction) + Layer 3 (Enhanced AI with flight_service_assignments)",
+        "expected_result_type": "Blake Nelson with phone number",
+        "status": "✅"
+    },
+    {
+        "id": 20,
+        "name": "Employee Shift Ending Query",
+        "spoken": "When does Blake Nelson shift end",
+        "expected_systems": "Layer 1 (Special case classification) + Layer 3 (Enhanced AI with employee_shifts JOIN)",
+        "expected_result_type": "Shift end time: July 7, 2025 at 2:45 PM",
+        "status": "✅"
+    },
+    # Test Case 21: Nearest Equipment Location Query
+    {
+        "id": 21,
+        "name": "Nearest Equipment Location Query",
+        "query": "Where is the nearest pushback tractor to gate B one, the one assigned broke down",
+        "expected_contains": ["PB-BN-01", "B1", "nearest", "Push-back Tractor"],
+        "expected_min_results": 3,
+        "category": "equipment",
+        "description": "Tests nearest equipment functionality with gate normalization and contextual information removal"
+    },
+    # Test Case 22: Ramp Team Members on Break Query
+    {
+        "id": 22,
+        "name": "Ramp Team Members on Break Query",
+        "spoken": "What ramp team members are on break during flight 1214",
+        "expected_systems": "Layer 1 (Flight normalization + Speech correction) + Layer 3 (Multi-table JOIN with special case classification)",
+        "expected_result_type": "List of ramp team members: Alex Harris (312-555-6987), Blake Clark (312-555-7034), etc.",
+        "status": "✅"
+    },
+    # Test Case 23: Next Assignment Query
+    {
+        "id": 23,
+        "name": "Next Assignment Query",
+        "spoken": "What is Alex Harris next assignment",
+        "expected_systems": "Layer 1 (Special case classification) + Layer 3 (Future shift filtering with personalized no-data response)",
+        "expected_result_type": "Alex Harris has no upcoming assignments scheduled at this time.",
         "status": "✅"
     }
 ]
@@ -363,7 +413,7 @@ def main():
     print(f"\n⏰ Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Architecture validation
-    if successful_tests >= 16:
+    if successful_tests >= 22:
         print(f"\n🛫 3-LAYER ARCHITECTURE: VALIDATED!")
         print(f"   Layer 1 (Hard-coded): Equipment, zones, entity normalization ✅")
         print(f"   Layer 2 (Dynamic): Semantic equipment matching ✅")  
