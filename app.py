@@ -374,8 +374,13 @@ Category:"""
             logger.info(f"🔑 SPECIAL CASE: shift ending query → personnel")
             return 'personnel'
         
+        # Special case: ramp team assignment queries should always be equipment (highest priority)
+        if any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff']) and any(phrase in query_lower for phrase in ['assigned', 'assignment', 'assigned to']):
+            logger.info(f"🔑 SPECIAL CASE: ramp team assignment query → equipment")
+            return 'equipment'
+        
         # Special case: ramp break queries should always be personnel (highest priority)
-        if any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff', 'on break']):
+        if 'on break' in query_lower and any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff']):
             logger.info(f"🔑 SPECIAL CASE: ramp break query → personnel")
             return 'personnel'
         
@@ -507,8 +512,13 @@ Category:"""
             logger.info(f"📝 SPECIAL CASE: shift ending query → personnel")
             return 'personnel'
         
+        # Special case: ramp team assignment queries should always be equipment (highest priority)
+        if any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff']) and any(phrase in query_lower for phrase in ['assigned', 'assignment', 'assigned to']):
+            logger.info(f"📝 SPECIAL CASE: ramp team assignment query → equipment")
+            return 'equipment'
+        
         # Special case: ramp break queries should always be personnel
-        if any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff', 'on break']):
+        if 'on break' in query_lower and any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff']):
             logger.info(f"📝 SPECIAL CASE: ramp break query → personnel")
             return 'personnel'
         
@@ -540,8 +550,13 @@ Category:"""
             logger.info(f"🔍 SPECIAL CASE: cleaning lead query → personnel")
             return 'personnel'
         
+        # Special case: ramp team assignment queries should always be equipment (highest priority)
+        if any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff']) and any(phrase in query_lower for phrase in ['assigned', 'assignment', 'assigned to']):
+            logger.info(f"🔍 SPECIAL CASE: ramp team assignment query → equipment")
+            return 'equipment'
+        
         # Special case: ramp break queries should always be personnel
-        if any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff', 'on break']):
+        if 'on break' in query_lower and any(phrase in query_lower for phrase in ['ramp team', 'ramp members', 'ramp staff']):
             logger.info(f"🔍 SPECIAL CASE: ramp break query → personnel")
             return 'personnel'
         
@@ -789,6 +804,10 @@ Category:"""
                 '"Most recent departure" -> SELECT * FROM flights WHERE actual_departure IS NOT NULL ORDER BY actual_departure DESC LIMIT 1;'
             ],
             'equipment': [
+                # CRITICAL: Ramp team assignment queries MUST use flight_operations table
+                '"What ramp team members are assigned to flight UA1214?" -> SELECT f.ramp_team_members FROM flight_operations f JOIN flights fl ON f.flight_id = fl.flight_id WHERE fl.flight_number = \'UA1214\';',
+                '"What team members are assigned to flight UA1214?" -> SELECT f.ramp_team_members FROM flight_operations f JOIN flights fl ON f.flight_id = fl.flight_id WHERE fl.flight_number = \'UA1214\';',
+                '"Who is assigned to flight UA1214?" -> SELECT f.ramp_team_members FROM flight_operations f JOIN flights fl ON f.flight_id = fl.flight_id WHERE fl.flight_number = \'UA1214\';',
                 '"Find pushback tractors assigned to B-South" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone = \'B-South\';',
                 '"How many pushback tractors in zone B-South?" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone = \'B-South\';',
                 '"How many container loaders in C-South-1?" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Container Loader\' AND assigned_zone = \'C-South-1\';',
@@ -3386,4 +3405,6 @@ def swagger_ui():
     return swagger_html
 
 if __name__ == '__main__':
-    app.run(debug=False, host='localhost', port=3000) 
+    import os
+    port = int(os.environ.get('PORT', 3000))
+    app.run(debug=False, host='0.0.0.0', port=port) 

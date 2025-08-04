@@ -593,8 +593,8 @@ class VoiceAssistant {
                             this.onStatusChange('Ready - Say "Jarvis" to begin');
                         }
                         
-                        // Update modern UI back to idle
-                        if (window.modernJarvis) {
+                        // Update modern UI back to idle (only if not currently speaking)
+                        if (window.modernJarvis && !this.isSpeaking) {
                             window.modernJarvis.updateBubbleState('idle');
                             window.modernJarvis.updateStatus('Ready', 'Say "Jarvis" to begin');
                         }
@@ -1338,6 +1338,12 @@ class VoiceAssistant {
         this.interruptedDuringResponse = false;
         this.isSpeaking = true;
         
+        // Update bubble state to speaking when speech starts
+        if (window.modernJarvis) {
+            window.modernJarvis.updateBubbleState('speaking');
+            console.log('🔄 Speech starting - bubble state set to speaking');
+        }
+        
         // Use language-specific voice if available
         if (this.languageManager) {
             const voice = this.languageManager.getVoiceForLanguage();
@@ -1418,6 +1424,12 @@ class VoiceAssistant {
             this.isSpeaking = false;
             this.synthesisLock = false;
             
+            // Update bubble state to idle when speech actually ends
+            if (window.modernJarvis) {
+                window.modernJarvis.updateBubbleState('idle');
+                console.log('🔄 Speech ended - bubble state reset to idle');
+            }
+            
             // If we were interrupted, don't restart - the interruption handler will take over
             if (this.interruptedDuringResponse) {
                 console.log('🔄 Speech was interrupted - letting interruption handler manage restart');
@@ -1489,8 +1501,8 @@ class VoiceAssistant {
                             this.onStatusChange(readyMessage);
                         }
                         
-                        // Update modern UI to idle state
-                        if (window.modernJarvis) {
+                        // Update modern UI to idle state (only if not currently speaking)
+                        if (window.modernJarvis && !this.isSpeaking) {
                             window.modernJarvis.updateBubbleState('idle');
                             window.modernJarvis.updateStatus('Ready', `Say "${wakeWord}" to begin`);
                         }
@@ -1906,7 +1918,7 @@ class VoiceAssistant {
             this.onStatusChange(readyMessage);
         }
         
-        if (window.modernJarvis) {
+        if (window.modernJarvis && !this.isSpeaking) {
             window.modernJarvis.updateBubbleState('idle');
             window.modernJarvis.updateStatus('Ready', `Say "${wakeWord}" to begin`);
         }
