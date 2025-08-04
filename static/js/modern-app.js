@@ -266,8 +266,18 @@ class ModernJarvisApp {
             this.updateBubbleState('processing');
             this.updateStatus('Processing...', 'Analyzing your request');
             
+            // Store processing start time to ensure minimum visibility
+            const processingStartTime = Date.now();
+            
             try {
                 const result = await originalProcessCommand(command);
+                
+                // Ensure processing state is visible for at least 500ms
+                const processingDuration = Date.now() - processingStartTime;
+                if (processingDuration < 500) {
+                    await new Promise(resolve => setTimeout(resolve, 500 - processingDuration));
+                }
+                
                 return result;
             } finally {
                 // State will be updated by other callbacks
@@ -277,9 +287,8 @@ class ModernJarvisApp {
         // Handle speaking state
         const originalSpeak = this.voiceAssistant.speak.bind(this.voiceAssistant);
         this.voiceAssistant.speak = (text, options = {}) => {
-            this.updateBubbleState('speaking');
-            this.updateStatus('Speaking...', 'Listening to response');
-            
+            // Note: Bubble state will be managed by voice-assistant.js onstart event
+            // This ensures proper timing and prevents premature state changes
             return originalSpeak(text, options);
         };
         

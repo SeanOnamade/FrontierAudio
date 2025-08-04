@@ -24,6 +24,29 @@
             <p class="app-subtitle">Airport Operations Assistant</p>
         </header>
 
+        <!-- Color Legend (Status Key) -->
+        <div class="status-legend">
+            <h3 class="legend-title">Status Colors</h3>
+            <div class="legend-items">
+                <div class="legend-item">
+                    <div class="legend-color listening"></div>
+                    <span class="legend-label">Listening</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color idle"></div>
+                    <span class="legend-label">Processing</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color processing"></div>
+                    <span class="legend-label">Error</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color speaking"></div>
+                    <span class="legend-label">Responding</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Voice Interface -->
         <main class="main-interface">
             <!-- Central Voice Bubble -->
@@ -169,7 +192,7 @@
                         </div>
                         <div class="setting-card-control">
                             <label class="premium-toggle">
-                                <input type="checkbox" id="transparent-responses-toggle" class="premium-checkbox" checked disabled>
+                                <input type="checkbox" id="transparent-responses-toggle" class="premium-checkbox" checked>
                                 <span class="toggle-slider"></span>
                             </label>
                         </div>

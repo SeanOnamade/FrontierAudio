@@ -5,9 +5,9 @@ Automated Test Suite for Voice Assistant API
 This script tests the voice assistant API endpoints with a comprehensive set of test cases
 covering various query types, speech recognition scenarios, and system capabilities.
 
-Total Test Cases: 23
+Total Test Cases: 24
 - Basic Functionality (1-5): Core voice recognition and query processing  
-- Complex Tests (6-23): Advanced scenarios including multi-table joins, speech variations
+- Complex Tests (6-24): Advanced scenarios including multi-table joins, speech variations
 """
 
 import requests
@@ -19,7 +19,7 @@ from datetime import datetime
 BASE_URL = "http://localhost:3000"
 QUERY_ENDPOINT = f"{BASE_URL}/api/query"
 
-# Test Cases - Total: 23
+# Test Cases - Total: 24
 TEST_CASES = [
     {
         "id": 1,
@@ -206,6 +206,15 @@ TEST_CASES = [
         "spoken": "What is Alex Harris next assignment",
         "expected_systems": "Layer 1 (Special case classification) + Layer 3 (Future shift filtering with personalized no-data response)",
         "expected_result_type": "Alex Harris has no upcoming assignments scheduled at this time.",
+        "status": "✅"
+    },
+    # Test Case 24: Ramp Team Assignment Query
+    {
+        "id": 24,
+        "name": "Ramp Team Assignment Query",
+        "spoken": "What ramp team members are assigned to flight 1214",
+        "expected_systems": "Layer 1 (Special case classification, flight number correction) + Layer 3 (flight_operations table query)",
+        "expected_result_type": "Val Davis (312-555-7491); Logan Robinson (312-555-8026); Lane Lee (312-555-4104)",
         "status": "✅"
     }
 ]
@@ -412,7 +421,7 @@ def main():
     print(f"\n⏰ Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Architecture validation
-    if successful_tests >= 22:
+    if successful_tests >= 23:
         print(f"\n🛫 3-LAYER ARCHITECTURE: VALIDATED!")
         print(f"   Layer 1 (Hard-coded): Equipment, zones, entity normalization ✅")
         print(f"   Layer 2 (Dynamic): Semantic equipment matching ✅")  
