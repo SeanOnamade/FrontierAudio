@@ -2866,6 +2866,9 @@ def process_voice_query_v2():
             "response": result["response"],
             "confidence": result["confidence"],
             "language": result["language"],
+            "sql_query": result.get("sql_query", "N/A"),
+            "results_count": result.get("result_count", 0),
+            "processing_time": result.get("latency", 0),
             "api_version": "2.0"
         }
         

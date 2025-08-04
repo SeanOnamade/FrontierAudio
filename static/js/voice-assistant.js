@@ -2,6 +2,15 @@ class VoiceAssistant {
     constructor() {
         this.recognition = null;
         this.synthesis = window.speechSynthesis;
+        
+        // Ensure speech synthesis is initialized
+        if (!this.synthesis) {
+            console.error('❌ Speech synthesis not available in this browser');
+        } else {
+            // Trigger voice loading early
+            this.synthesis.getVoices();
+            console.log('🎤 Speech synthesis initialized');
+        }
         this.isListening = false;
         this.isProcessing = false;
         this.wakeWordDetected = false;
@@ -399,9 +408,19 @@ class VoiceAssistant {
         // Set up event handlers
         this.setupEventHandlers();
         
+        /* COMMENTED OUT - May conflict with interruption system
+        // Start speech synthesis monitor
+        this.startSpeechSynthesisMonitor();
+        */
+        
         // Mark as initialized
         this.isInitialized = true;
         console.log('✅ Voice Assistant fully initialized');
+        
+        // Add cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            this.destroy();
+        });
     }
     
     setupEventHandlers() {
@@ -1007,6 +1026,11 @@ class VoiceAssistant {
             
             console.log('🎯 Backend response:', response);
             
+            // Show SQL query display if available
+            if (response && window.SqlDisplay) {
+                window.SqlDisplay.show(response);
+            }
+            
             if (response && response.response) {
                 console.log('✅ Speaking response:', response.response.substring(0, 100) + '...');
                 
@@ -1223,6 +1247,7 @@ class VoiceAssistant {
         this.allowInterruption = true;
         this.activeInterruptionListening = true;
         this.speechStartTime = Date.now();
+        this.speechStarted = false;  // Will be set to true when speech actually starts
         
         console.log('🎤 ENHANCED: Keeping voice recognition ACTIVE during speech for interruption');
         console.log(`🎤 INTERRUPTION STATE: isSpeaking=${this.isSpeaking}, allowInterruption=${this.allowInterruption}, speechStartTime=${this.speechStartTime}`);
@@ -1241,14 +1266,7 @@ class VoiceAssistant {
             this.speechEffectivelyStopped = false;
         }
         
-        // Only cancel if there's actual speech happening to avoid conflicts
-        if (this.synthesis.speaking && !this.speechEffectivelyStopped) {
-            this.synthesis.cancel();
-            // Small delay to allow cancellation to complete
-            setTimeout(() => this.performSpeech(text), 150);
-            return;
-        }
-        
+        // Directly perform speech - cancellation is handled in performSpeech
         this.performSpeech(text);
     }
     
@@ -1294,6 +1312,22 @@ class VoiceAssistant {
     }
     
     performSpeech(text) {
+        /* COMMENTED OUT - May conflict with interruption system
+        // AGGRESSIVE: Force clear ALL speech queue
+        try {
+            // Cancel multiple times to ensure queue is clear
+            this.synthesis.cancel();
+            this.synthesis.cancel();
+            
+            // Force a pause/resume cycle to unstick synthesis
+            if (this.synthesis.paused) {
+                this.synthesis.resume();
+            }
+        } catch (e) {
+            console.warn('Failed to clear speech queue:', e);
+        }
+        */
+        
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = this.voiceSettings.rate;
         utterance.pitch = this.voiceSettings.pitch;
@@ -1322,21 +1356,30 @@ class VoiceAssistant {
         // Fallback to professional voice selection
         if (!utterance.voice) {
             const voices = this.synthesis.getVoices();
-            const preferredVoice = voices.find(voice => 
-                voice.name.includes('Google') || 
-                voice.name.includes('Microsoft') ||
-                voice.name.includes('Alex') ||
-                voice.default
-            );
             
-            if (preferredVoice) {
-                utterance.voice = preferredVoice;
+            // If no voices loaded yet, try to trigger loading
+            if (voices.length === 0) {
+                console.warn('⚠️ No voices available yet, using default');
+                // Don't set a voice, let the browser use its default
+            } else {
+                const preferredVoice = voices.find(voice => 
+                    voice.name.includes('Google') || 
+                    voice.name.includes('Microsoft') ||
+                    voice.name.includes('Alex') ||
+                    voice.default
+                );
+                
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                    console.log(`🎤 Using voice: ${preferredVoice.name}`);
+                }
             }
         }
         
         utterance.onstart = () => {
             // Set a flag to ignore speech recognition during synthesis
             this.isSpeaking = true;
+            this.speechStarted = true;  // Mark that speech actually started
             if (this.onStatusChange) {
                 const speakingMessage = this.languageManager ? 
                     this.languageManager.translate('speaking') : 'Speaking...';
@@ -1486,7 +1529,7 @@ class VoiceAssistant {
         };
         
         utterance.onerror = (event) => {
-            console.error('Speech synthesis error:', event.error);
+            console.error('Speech synthesis error:', event.error, event);
             
             // Clear interruption check interval
             if (this.interruptionCheckInterval) {
@@ -1537,7 +1580,39 @@ class VoiceAssistant {
             }, 500);
         };
         
+        console.log('🔊 Calling synthesis.speak() with text:', text.substring(0, 50) + '...');
         this.synthesis.speak(utterance);
+        
+        /* COMMENTED OUT - May conflict with interruption system
+        // Auto-fix stuck speech synthesis - increased delay for safety
+        setTimeout(() => {
+            // Only retry if ALL conditions indicate stuck speech
+            if (!this.synthesis.speaking && 
+                !this.synthesis.pending && 
+                this.isSpeaking && 
+                !this.speechStarted) {  // Add extra check for speech not started
+                console.warn('⚠️ Speech synthesis stuck - attempting auto-fix');
+                
+                // Force cancel and retry
+                this.synthesis.cancel();
+                this.synthesis.cancel();
+                
+                // Retry the speech
+                const retryUtterance = new SpeechSynthesisUtterance(text);
+                retryUtterance.rate = this.voiceSettings.rate;
+                retryUtterance.pitch = this.voiceSettings.pitch;
+                retryUtterance.volume = this.voiceSettings.volume;
+                
+                // Copy all the event handlers
+                retryUtterance.onstart = utterance.onstart;
+                retryUtterance.onend = utterance.onend;
+                retryUtterance.onerror = utterance.onerror;
+                
+                console.log('🔄 Auto-retrying speech synthesis...');
+                this.synthesis.speak(retryUtterance);
+            }
+        }, 500);  // Increased from 200ms to 500ms for safety
+        */
     }
     
     /**
@@ -3593,6 +3668,94 @@ class VoiceAssistant {
             this.heartbeatInterval = null;
         }
     }
+    
+    /**
+     * Manually clear stuck speech synthesis
+     */
+    clearStuckSpeech() {
+        console.log('🔧 Manually clearing stuck speech...');
+        
+        // Cancel multiple times
+        this.synthesis.cancel();
+        this.synthesis.cancel();
+        
+        // Resume if paused
+        if (this.synthesis.paused) {
+            this.synthesis.resume();
+        }
+        
+        // Reset flags
+        this.isSpeaking = false;
+        this.synthesisLock = false;
+        this.speechBlocked = false;
+        this.speechEffectivelyStopped = false;
+        
+        console.log('✅ Speech synthesis cleared');
+        return 'Speech synthesis cleared - try your query again';
+    }
+    
+    /**
+     * Clean up all intervals and resources
+     */
+    destroy() {
+        console.log('🧹 Cleaning up VoiceAssistant resources...');
+        
+        // Clear all intervals
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+        
+        /* COMMENTED OUT - speechMonitorInterval is disabled
+        if (this.speechMonitorInterval) {
+            clearInterval(this.speechMonitorInterval);
+            this.speechMonitorInterval = null;
+        }
+        */
+        
+        if (this.interruptionCheckInterval) {
+            clearInterval(this.interruptionCheckInterval);
+            this.interruptionCheckInterval = null;
+        }
+        
+        // Stop all speech recognition
+        this.stopListening();
+        
+        // Cancel any pending speech
+        if (this.synthesis) {
+            this.synthesis.cancel();
+        }
+        
+        console.log('✅ VoiceAssistant cleanup complete');
+    }
+    
+    /* COMMENTED OUT - May conflict with interruption system
+    // Monitor speech synthesis for stuck states and auto-fix
+    startSpeechSynthesisMonitor() {
+        // Clear any existing monitor
+        if (this.speechMonitorInterval) {
+            clearInterval(this.speechMonitorInterval);
+        }
+        
+        this.speechMonitorInterval = setInterval(() => {
+            // Check if synthesis appears stuck
+            const hasQueuedSpeech = this.synthesis.pending;
+            const isSpeaking = this.synthesis.speaking;
+            const isPaused = this.synthesis.paused;
+            
+            if (hasQueuedSpeech && !isSpeaking && !isPaused) {
+                console.warn('🔧 Speech synthesis monitor: Detected stuck queue - auto-fixing...');
+                
+                // Force clear the queue
+                this.synthesis.cancel();
+                this.synthesis.cancel();
+                
+                // Don't modify state directly - let the speech event handlers manage isSpeaking
+                // This prevents state synchronization issues
+            }
+        }, 1000); // Check every second
+    }
+    */
     
     /**
      * 🔥 NEW: Configure interruption settings

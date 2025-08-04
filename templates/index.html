@@ -145,7 +145,7 @@
                             </div>
                             <div class="setting-card-content">
                                 <h3 class="setting-card-title">Enhanced Keywords</h3>
-                                <p class="setting-card-subtitle">Better synonym recognition</p>
+                                <p class="setting-card-subtitle">Understands different ways to say the same thing (e.g., "plane" vs "aircraft")</p>
                             </div>
                         </div>
                         <div class="setting-card-control">
@@ -166,7 +166,7 @@
                             </div>
                             <div class="setting-card-content">
                                 <h3 class="setting-card-title">Enhanced Phrases</h3>
-                                <p class="setting-card-subtitle">Multi-word pattern detection</p>
+                                <p class="setting-card-subtitle">Recognizes common flight phrases like "delayed flights" or "gate changes"</p>
                             </div>
                         </div>
                         <div class="setting-card-control">
@@ -187,7 +187,7 @@
                             </div>
                             <div class="setting-card-content">
                                 <h3 class="setting-card-title">AI Explanations</h3>
-                                <p class="setting-card-subtitle">Replace "I don't know" with helpful guidance</p>
+                                <p class="setting-card-subtitle">Provides helpful suggestions when your question can't be answered directly</p>
                             </div>
                         </div>
                         <div class="setting-card-control">
@@ -208,7 +208,7 @@
                             </div>
                             <div class="setting-card-content">
                                 <h3 class="setting-card-title">Dynamic Speech Matching</h3>
-                                <p class="setting-card-subtitle">Smart fallback for unknown equipment variations</p>
+                                <p class="setting-card-subtitle">Maps aircraft variations (e.g., "Boeing 737" → "737") automatically</p>
                             </div>
                         </div>
                         <div class="setting-card-control">
@@ -219,7 +219,119 @@
                         </div>
                     </div>
 
+                    <!-- Learning System Card - Coming Soon -->
+                    <div class="premium-setting-card locked-card">
+                        <div class="setting-card-header">
+                            <div class="setting-icon learning-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 3L1 9L5 11.18V17.18L12 21L19 17.18V11.18L21 10.09V17H23V9L12 3ZM18.82 9L12 12.72L5.18 9L12 5.28L18.82 9ZM17 15.99L12 18.72L7 15.99V12.27L12 15L17 12.27V15.99Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Learning System</h3>
+                                <p class="setting-card-subtitle">Automatically learns from failed queries to improve responses</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle locked">
+                                <input type="checkbox" class="premium-checkbox" disabled>
+                                <span class="toggle-slider locked"></span>
+                                <span class="coming-soon-label">Coming Soon</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Clarification System Card - Coming Soon -->
+                    <div class="premium-setting-card locked-card">
+                        <div class="setting-card-header">
+                            <div class="setting-icon clarification-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 2C6.48 2 2 6.48 2 12S6.48 22 12 22 22 17.52 22 12 17.52 2 12 2ZM13 19H11V17H13V19ZM15.07 11.25L14.17 12.17C13.45 12.9 13 13.5 13 15H11V14.5C11 13.4 11.45 12.4 12.17 11.67L13.41 10.41C13.78 10.05 14 9.55 14 9C14 7.9 13.1 7 12 7S10 7.9 10 9H8C8 6.79 9.79 5 12 5S16 6.79 16 9C16 9.88 15.64 10.68 15.07 11.25Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Smart Clarification</h3>
+                                <p class="setting-card-subtitle">Asks "Did you mean X or Y?" when queries are unclear</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle locked">
+                                <input type="checkbox" class="premium-checkbox" disabled>
+                                <span class="toggle-slider locked"></span>
+                                <span class="coming-soon-label">Coming Soon</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Enhanced Prompts Card - Permanently Enabled -->
+                    <div class="premium-setting-card locked-card enabled">
+                        <div class="setting-card-header">
+                            <div class="setting-icon prompts-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M3 17.25V21H6.75L17.81 9.94L14.06 6.19L3 17.25ZM20.71 7.04C21.1 6.65 21.1 6.02 20.71 5.63L18.37 3.29C17.98 2.9 17.35 2.9 16.96 3.29L15.13 5.12L18.88 8.87L20.71 7.04Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Enhanced Prompts</h3>
+                                <p class="setting-card-subtitle">Includes airline codes, gate formats, and database examples in AI instructions</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle locked enabled">
+                                <input type="checkbox" class="premium-checkbox" checked disabled>
+                                <span class="toggle-slider locked enabled"></span>
+                                <span class="enabled-label">Always On</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Enhanced Schema Card - Permanently Enabled -->
+                    <div class="premium-setting-card locked-card enabled">
+                        <div class="setting-card-header">
+                            <div class="setting-icon schema-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M4 6H2V20C2 21.1 2.9 22 4 22H18V20H4V6ZM20 2H8C6.9 2 6 2.9 6 4V16C6 17.1 6.9 18 8 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2ZM20 16H8V4H20V16ZM12 5.5V9.5C12 10.3 12.7 11 13.5 11S15 10.3 15 9.5V5.5C15 4.7 14.3 4 13.5 4S12 4.7 12 5.5ZM9 14H19V12H9V14ZM9 7H11V9H9V7Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Enhanced Schema</h3>
+                                <p class="setting-card-subtitle">Deep understanding of flight database relationships and airline terminology</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle locked enabled">
+                                <input type="checkbox" class="premium-checkbox" checked disabled>
+                                <span class="toggle-slider locked enabled"></span>
+                                <span class="enabled-label">Always On</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Query Classification Card - Permanently Enabled -->
+                    <div class="premium-setting-card locked-card enabled">
+                        <div class="setting-card-header">
+                            <div class="setting-icon classification-icon">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                    <path d="M14 2H6C4.9 2 4.01 2.9 4.01 4L4 20C4 21.1 4.89 22 5.99 22H18C19.1 22 20 21.1 20 20V8L14 2ZM18 20H6V4H13V9H18V20ZM9 19V17H19V19H9ZM9 15V13H16V15H9ZM9 11V9H13V11H9Z" fill="currentColor"/>
+                                </svg>
+                            </div>
+                            <div class="setting-card-content">
+                                <h3 class="setting-card-title">Query Classification</h3>
+                                <p class="setting-card-subtitle">Categorizes questions (gate info, delays, flight status) for specialized handling</p>
+                            </div>
+                        </div>
+                        <div class="setting-card-control">
+                            <label class="premium-toggle locked enabled">
+                                <input type="checkbox" class="premium-checkbox" checked disabled>
+                                <span class="toggle-slider locked enabled"></span>
+                                <span class="enabled-label">Always On</span>
+                            </label>
+                        </div>
+                    </div>
+
                     <!-- Sensitivity Setting Card -->
+                    <!-- Wake Word Sensitivity Card - COMMENTED OUT -->
+                    <!--
                     <div class="premium-setting-card">
                         <div class="setting-card-header">
                             <div class="setting-icon sensitivity-icon">
@@ -247,8 +359,10 @@
                             </div>
                         </div>
                     </div>
+                    -->
 
-                    <!-- Voice Biometrics Card -->
+                    <!-- Voice Biometrics Card - COMMENTED OUT -->
+                    <!--
                     <div class="premium-setting-card">
                         <div class="setting-card-header">
                             <div class="setting-icon biometrics-icon">
@@ -269,8 +383,10 @@
                             </label>
                         </div>
                     </div>
+                    -->
 
-                    <!-- Stress Detection Card -->
+                    <!-- Stress Detection Card - COMMENTED OUT -->
+                    <!--
                     <div class="premium-setting-card">
                         <div class="setting-card-header">
                             <div class="setting-icon stress-icon">
@@ -290,8 +406,10 @@
                             </label>
                         </div>
                     </div>
+                    -->
 
-                    <!-- Language Detection Card -->
+                    <!-- Auto Language Detection Card - COMMENTED OUT -->
+                    <!--
                     <div class="premium-setting-card">
                         <div class="setting-card-header">
                             <div class="setting-icon language-icon">
@@ -311,8 +429,10 @@
                             </label>
                         </div>
                     </div>
+                    -->
 
-                    <!-- User Profile Card -->
+                    <!-- User Profile Card - COMMENTED OUT -->
+                    <!--
                     <div class="premium-setting-card user-profile-card">
                         <div class="setting-card-header">
                             <div class="user-avatar">
@@ -338,6 +458,7 @@
                             </button>
                         </div>
                     </div>
+                    -->
 
                     <!-- Performance Dashboard Card - REMOVED per user request -->
                 </div>
@@ -354,6 +475,206 @@
             <div id="visual-feedback"><div class="waveform"></div></div>
             <button id="test-btn">Test</button>
             <button id="run-tests-btn">Run Tests</button>
+        </div>
+
+        <!-- SQL Query Display -->
+        <div id="sql-query-display" class="sql-query-display hidden">
+            <div class="sql-header">
+                <div class="sql-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Generated SQL Query</span>
+                </div>
+                <button id="sql-close-btn" class="sql-close-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="sql-content">
+                <code id="sql-query-text"></code>
+            </div>
+            <div class="sql-stats">
+                <span id="sql-processing-time"></span>
+                <span id="sql-results-count"></span>
+            </div>
+        </div>
+
+        <!-- Example Questions Floating Tab -->
+        <div id="example-questions-tab" class="floating-tab">
+            <div class="tab-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M9.09 9C9.3251 8.33167 9.78915 7.76811 10.4 7.40913C11.0109 7.05016 11.7289 6.91894 12.4272 7.03871C13.1255 7.15849 13.7588 7.52152 14.2151 8.06353C14.6713 8.60553 14.9211 9.29152 14.92 10C14.92 12 11.92 13 11.92 13M12 17H12.01M22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>Example Questions</span>
+            </div>
+        </div>
+
+        <!-- Example Questions Slide-out Panel -->
+        <div id="example-questions-panel" class="slide-out-panel">
+            <div class="panel-header">
+                <h2>Example Questions</h2>
+                <button id="close-panel" class="close-button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                        <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="panel-content">
+                <div class="test-cases-content">
+                    <div class="section">
+                        <h3>🎯 Basic Equipment Questions</h3>
+                        <div class="example-group">
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "Show me pushback tractors in zone B South"
+                                <div class="example-description">Find specific equipment in designated zones</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = 'Push-back Tractor' AND assigned_zone = 'B-South';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Found 4 Push-back Tractor records in B-South zone: PB-BS-01, PB-BS-02, PB-BS-03, PB-BS-04"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "How many ground power units are idle?"
+                                <div class="example-description">Check equipment status and availability</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.equipment_type = 'GPU' AND el.equipment_status = 'Idle';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "There are 428 idle GPU equipment units currently available"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "What types of equipment do we have?"
+                                <div class="example-description">Discover available equipment categories</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT DISTINCT equipment_type FROM equipment ORDER BY equipment_type;</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Available equipment types: Baggage Tug, GPU, Push-back Tractor, Service Truck"</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>🛫 Flight Operations</h3>
+                        <div class="example-group">
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "What pushback tractor is assigned to flight UA2292?"
+                                <div class="example-description">Find equipment assigned to specific flights</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT DISTINCT e.entity_id, e.equipment_type FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id JOIN flights f ON el.flight_id = f.flight_id WHERE f.flight_number = 'UA2292' AND e.equipment_type = 'Push-back Tractor';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Flight UA2292 has 4 pushback tractors assigned: PB-CC-01, PB-CC-02, PB-CC-03, PB-CC-04"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "What is the nearest pushback tractor to gate B6?"
+                                <div class="example-description">Locate equipment closest to gates</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = 'Push-back Tractor' AND assigned_zone LIKE 'B%' ORDER BY assigned_zone;</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "The nearest pushback tractors to gate B6 are in B-Mid zone, followed by B-North and B-South zones"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "What is the provider company for flight UA1214?"
+                                <div class="example-description">Get flight and airline information</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT airline_code FROM flights WHERE flight_number = 'UA1214';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Flight UA1214 is operated by United Airlines"</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>👨‍✈️ Personnel & Staff</h3>
+                        <div class="example-group">
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "Who is the cleaning lead for flight 1214?"
+                                <div class="example-description">Find staff assignments for flights</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT fsa.employee_name FROM flight_service_assignments fsa JOIN flights f ON fsa.flight_id = f.flight_id WHERE f.flight_number = 'UA1214' AND fsa.service_type = 'CLEANING_LEAD';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "The cleaning lead for flight UA1214 is Blake Nelson (312-555-3222)"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "When does Blake Nelson's shift end?"
+                                <div class="example-description">Check employee schedules and shifts</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT e.employee_name, es.shift_end FROM employees e JOIN employee_shifts es ON e.employee_id = es.employee_id WHERE e.employee_name LIKE '%Blake Nelson%' ORDER BY es.shift_end DESC LIMIT 1;</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Blake Nelson's shift ends on July 7, 2025, at 2:45 PM"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "What ramp team members are working on flight 1214?"
+                                <div class="example-description">Find team members assigned to flights</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT e.employee_name, e.phone_number FROM employees e JOIN employee_roles er ON e.employee_id = er.employee_id JOIN employee_shifts es ON e.employee_id = es.employee_id JOIN flights f ON es.flight_id = f.flight_id WHERE er.role_name LIKE '%Ramp%' AND f.flight_number = 'UA1214';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Ramp team members on flight UA1214: Alex Harris (312-555-6987), Blake Clark (312-555-7034), and 15+ others"</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h3>🔍 Advanced Queries</h3>
+                        <div class="example-group">
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "Show me all equipment in zone B south"
+                                <div class="example-description">Get comprehensive zone inventories</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE assigned_zone = 'B-South';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Zone B-South contains 16 pieces of equipment: 4 Push-back Tractors, 4 GPUs, 4 Baggage Tugs, 4 Service Trucks"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "Find all baggage tugs in zones C north and C central"
+                                <div class="example-description">Search across multiple zones</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = 'Baggage Tug' AND assigned_zone IN ('C-North', 'C-Central');</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Found 8 Baggage Tugs across zones C-North and C-Central: TG-CN-01 through TG-CN-04, TG-CC-01 through TG-CC-04"</div>
+                            </div>
+                            <div class="example-item">
+                                <strong>Try saying:</strong> "What equipment is idle in zone C north?"
+                                <div class="example-description">Combine status and location filters</div>
+                                <div class="example-sql">
+                                    <strong>Generated SQL:</strong>
+                                    <code>SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.assigned_zone = 'C-North' AND el.equipment_status = 'Idle';</code>
+                                </div>
+                                <div class="example-response"><strong>Expected response:</strong> "Zone C-North has 294 pieces of idle equipment available for assignment"</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tips-section">
+                        <h3>💡 Voice Tips</h3>
+                        <div class="tip-item">
+                            <strong>Equipment Names:</strong> Say "pushback tractors", "ground power units", "baggage tugs", "service trucks"
+                        </div>
+                        <div class="tip-item">
+                            <strong>Zone Format:</strong> Say "zone B South", "zone C North", "zone C Central" - the system will understand
+                        </div>
+                        <div class="tip-item">
+                            <strong>Flight Numbers:</strong> You can say "flight 1214" or "flight UA1214" - both work
+                        </div>
+                        <div class="tip-item">
+                            <strong>Natural Speech:</strong> Speak naturally - the system understands variations and synonyms
+                        </div>
+                        <div class="tip-item">
+                            <strong>SQL Generation:</strong> Watch the SQL queries above to understand how your speech gets converted to database queries
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -388,8 +709,10 @@
     <script src="{{ url_for('static', filename='js/smart-query-processor.js') }}?v={{ timestamp }}"></script>
     <!-- DISABLED: ProactiveAssistant - Prevents random notifications about delayed flights -->
     <!-- <script src="{{ url_for('static', filename='js/proactive-assistant.js') }}?v={{ timestamp }}"></script> -->
+    <script src="{{ url_for('static', filename='js/sql-display.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/voice-assistant.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/wake-word.js') }}?v={{ timestamp }}"></script>
+    <script src="{{ url_for('static', filename='js/example-questions.js') }}?v={{ timestamp }}"></script>
     <script src="{{ url_for('static', filename='js/modern-app.js') }}?v={{ timestamp }}"></script>
 </body>
 </html> 
