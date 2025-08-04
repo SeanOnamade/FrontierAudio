@@ -280,6 +280,9 @@ def process_query():
         if cache_manager:
             cached_response = cache_manager.get('query_response', cache_key)
             if cached_response:
+                # Ensure cached responses include sql_query field for consistency
+                if 'sql_query' not in cached_response:
+                    cached_response['sql_query'] = "N/A (cached response)"
                 g.cache_status = 'hit'
                 return jsonify(cached_response)
         
@@ -300,6 +303,7 @@ def process_query():
         response_data = {
             'query': user_query,
             'response': response_text,
+            'sql_query': sql_query,
             'results_count': len(results),
             'processing_time': round(processing_time, 3),
             'language': language,
