@@ -446,7 +446,9 @@ Category:"""
             'equipment': [
                 'equipment on flight', 'tractor on flight', 'vehicle on',
                 'available equipment', 'equipment status', 'equipment assigned',
-                'pushback tractor', 'equipment location'
+                'pushback tractor', 'equipment location', 'equipment in zone',
+                'baggage tugs in', 'tractors in zone', 'loaders in zone',
+                'equipment in zones', 'vehicles in zone'
             ],
             'flight_status': [
                 'flight status', 'aircraft status', 'flight delayed',
@@ -473,20 +475,34 @@ Category:"""
         return None
 
     def _check_enhanced_keywords(self, user_query):
-        """Check enhanced keyword lists (after phrase check)"""
+        """Check enhanced keyword lists with equipment priority (after phrase check)"""
         keywords = self._get_enhanced_keywords()
         if not keywords:
             return None
         
         query_lower = user_query.lower()
+        matches = []
         
-        # Check each category's keywords
+        # Find all matching categories
         for category, keyword_list in keywords.items():
             if any(word in query_lower for word in keyword_list):
-                logger.info(f"🔍 ENHANCED KEYWORD MATCH: {category}")
-                return category
+                matches.append(category)
         
-        return None
+        if not matches:
+            return None
+        
+        # Priority order: equipment > flight_status > personnel > location > time
+        # Equipment takes priority when combined with location (e.g., "equipment in zones")
+        priority_order = ['equipment', 'flight_status', 'personnel', 'location', 'time']
+        
+        for priority_category in priority_order:
+            if priority_category in matches:
+                logger.info(f"🔍 ENHANCED KEYWORD MATCH: {priority_category} (from {matches})")
+                return priority_category
+        
+        # Fallback to first match if none in priority list
+        logger.info(f"🔍 ENHANCED KEYWORD MATCH: {matches[0]}")
+        return matches[0]
 
     def _classify_query_enhanced(self, user_query):
         """Enhanced classification with phrases and keywords (wrapper method)"""
@@ -696,6 +712,9 @@ Category:"""
                 '"Show me flights that are on time" -> SELECT * FROM flights WHERE flight_status = \'On Time Depature\';',
                 '"What flights are turning?" -> SELECT * FROM flights WHERE flight_status LIKE \'%Turning%\';',
                 '"Show me flights waiting on aircraft" -> SELECT * FROM flights WHERE flight_status = \'Waiting on Aircraft\';',
+                '"What is the provider company for flight UA1214?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1214\';',
+                '"What airline operates flight UA2292?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA2292\';',
+                '"Who is the provider for flight UA1357?" -> SELECT airline_code FROM flights WHERE flight_number = \'UA1357\';',
                 '"What was the most recent flight to land?" -> SELECT * FROM flights WHERE actual_arrival IS NOT NULL ORDER BY actual_arrival DESC LIMIT 1;',
                 '"Which flight landed last?" -> SELECT * FROM flights WHERE actual_arrival IS NOT NULL ORDER BY actual_arrival DESC LIMIT 1;',
                 '"Show me the latest arrival" -> SELECT * FROM flights WHERE actual_arrival IS NOT NULL ORDER BY actual_arrival DESC LIMIT 1;',
@@ -707,12 +726,21 @@ Category:"""
                 '"How many pushback tractors in zone B-South?" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone = \'B-South\';',
                 '"How many container loaders in C-South-1?" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Container Loader\' AND assigned_zone = \'C-South-1\';',
                 '"Show me Belt Loader in B-Mid" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Belt Loader\' AND assigned_zone = \'B-Mid\';',
+                '"What is the nearest pushback tractor to gate B6?" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone LIKE \'B%\' ORDER BY assigned_zone;',
+                '"Find closest pushback tractors to gate C6" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND assigned_zone LIKE \'C%\' ORDER BY assigned_zone;',
+                '"Show nearest available equipment to terminal B" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE assigned_zone LIKE \'B%\' ORDER BY equipment_type, assigned_zone;',
                 '"Find GPU in C-Central" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'GPU\' AND assigned_zone = \'C-Central\';',
                 '"Show me Service Truck in B-North" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Service Truck\' AND assigned_zone = \'B-North\';',
                 '"How many Lavatory Truck in C-North" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'Lavatory Truck\' AND assigned_zone = \'C-North\';',
+                '"How many power units are in zone B-South" -> SELECT COUNT(*) FROM equipment WHERE equipment_type = \'GPU\' AND assigned_zone = \'B-South\';',
                 '"find Service Truck equipment in B-South" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Service Truck\' AND assigned_zone = \'B-South\';',
                 '"show me GPU equipment in C-North" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'GPU\' AND assigned_zone = \'C-North\';',
-                '"find Container Loader equipment in C-Central" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Container Loader\' AND assigned_zone = \'C-Central\';'
+                '"find Container Loader equipment in C-Central" -> SELECT entity_id, equipment_type, assigned_zone FROM equipment WHERE equipment_type = \'Container Loader\' AND assigned_zone = \'C-Central\';',
+                '"what ground power units are idle" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.equipment_type = \'GPU\' AND el.equipment_status = \'Idle\';',
+                '"show me idle equipment" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE el.equipment_status = \'Idle\';',
+                '"find idle pushback tractors" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.equipment_type = \'Push-back Tractor\' AND el.equipment_status = \'Idle\';',
+                '"what equipment is idle in zone C-North" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.assigned_zone = \'C-North\' AND el.equipment_status = \'Idle\';',
+                '"what equipment is idle in C-North" -> SELECT e.entity_id, e.equipment_type, el.equipment_status FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.assigned_zone = \'C-North\' AND el.equipment_status = \'Idle\';'
             ],
             'personnel': [
                 '"Who is the cleaning lead?" -> SELECT e.employee_name, e.phone_number FROM employees e JOIN employee_roles er ON e.employee_id = er.employee_id WHERE er.role_name = \'Cleaning Lead\';',
@@ -787,7 +815,7 @@ employee_shifts table (Work schedules):
 
 equipment table (Airport equipment):
 - entity_id (VARCHAR, PRIMARY KEY): Unique equipment identifier
-- equipment_type (VARCHAR): Type ('Pushback Tractor', 'Belt Loader', 'GPU')
+                - equipment_type (VARCHAR): Type ('Push-back Tractor', 'Belt Loader', 'GPU')
 - equipment_model (VARCHAR): Specific model/brand
 - assigned_zone (VARCHAR): Work area assignment
 - primary_gates (VARCHAR): Primary gate assignments
@@ -917,7 +945,7 @@ AIRPORT OPERATIONS CONTEXT FOR EQUIPMENT QUERIES:
 - Equipment can be assigned, available, or under maintenance
 - Location proximity matters for operational efficiency
 - Consider operator assignments and availability
-- Pushback tractors are critical for departure operations
+                - Push-back tractors are critical for departure operations
 - Include current assignment details when equipment is in use
 """,
             'personnel': """
@@ -951,16 +979,16 @@ AIRPORT OPERATIONS CONTEXT FOR PERSONNEL QUERIES:
                         '"What is the status of flight UA2406?" -> SELECT * FROM flights WHERE flight_number = \'UA2406\';',
                         '"What is the status of flight UA406?" -> SELECT * FROM flights WHERE flight_number LIKE \'%UA406%\';',
                         '"Status of flight 406" -> SELECT * FROM flights WHERE flight_number LIKE \'%406%\';',
-                        '"What pushback tractor is assigned to flight UA2406?" -> SELECT * FROM equipment WHERE assigned_flight = \'UA2406\' AND equipment_type = \'Pushback Tractor\';',
+                        '"What pushback tractor is assigned to flight UA2292?" -> SELECT DISTINCT e.entity_id, e.equipment_type FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id JOIN flights f ON el.flight_id = f.flight_id WHERE f.flight_number = \'UA2292\' AND e.equipment_type = \'Push-back Tractor\';',
                         '"Who is the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT e.first_name, e.last_name, e.phone_number FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA2406\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
                         '"Who was the cleaning lead on flight UA2406 and what is their phone number?" -> SELECT e.first_name, e.last_name, e.phone_number FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA2406\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
-                        '"Who is the lead cleaning for flight UA1234?" -> SELECT e.first_name, e.last_name FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA1234\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
+                        '"Who is the lead cleaning for flight UA1214?" -> SELECT e.first_name, e.last_name FROM employees e JOIN assignments a ON e.employee_id = a.employee_id WHERE a.flight_number = \'UA1214\' AND a.assignment_type = \'Cleaning\' AND e.role = \'Cleaning Lead\';',
                         '"Who is the cleaning lead and what is their phone number?" -> SELECT first_name, last_name, phone_number FROM employees WHERE role = \'Cleaning Lead\';',
                         '"When does Maria Rodriguez shift end?" -> SELECT shift_end FROM employees WHERE first_name = \'Maria\' AND last_name = \'Rodriguez\';',
-                        '"What is the nearest pushback tractor to gate A8?" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND status = \'Available\' ORDER BY current_location;',
-                        '"Find available pushback tractors near gate A12" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND status = \'Available\';',
-                        '"Which pushback tractors are not assigned?" -> SELECT * FROM equipment WHERE equipment_type = \'Pushback Tractor\' AND assigned_flight IS NULL;',
-                        '"What equipment is assigned to UA2406?" -> SELECT * FROM equipment WHERE assigned_flight = \'UA2406\';',
+                        '"What is the nearest pushback tractor to gate A8?" -> SELECT * FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND status = \'Available\' ORDER BY current_location;',
+                        '"Find available pushback tractors near gate A12" -> SELECT * FROM equipment WHERE equipment_type = \'Push-back Tractor\' AND status = \'Available\';',
+                        '"Which pushback tractors are not assigned?" -> SELECT e.entity_id, e.equipment_type FROM equipment e LEFT JOIN equipment_locations el ON e.entity_id = el.entity_id WHERE e.equipment_type = \'Push-back Tractor\' AND el.flight_id IS NULL;',
+                        '"What equipment is assigned to UA2292?" -> SELECT DISTINCT e.entity_id, e.equipment_type FROM equipment e JOIN equipment_locations el ON e.entity_id = el.entity_id JOIN flights f ON el.flight_id = f.flight_id WHERE f.flight_number = \'UA2292\';',
                         '"What ramp team members are on break now?" -> SELECT * FROM employees WHERE department = \'Ramp\' AND status = \'Break\';',
                         '"What is John Smith next flight assignment?" -> SELECT a.flight_number, a.assignment_type, a.start_time, a.end_time, a.status, f.departure_gate FROM assignments a JOIN flights f ON a.flight_number = f.flight_number JOIN employees e ON a.employee_id = e.employee_id WHERE e.first_name = \'John\' AND e.last_name = \'Smith\' AND a.status = \'Scheduled\' ORDER BY a.start_time LIMIT 1;',
                         '"What is John Smith assignment?" -> SELECT a.flight_number, a.assignment_type, a.start_time, a.end_time, a.status FROM assignments a JOIN employees e ON a.employee_id = e.employee_id WHERE e.first_name = \'John\' AND e.last_name = \'Smith\';',
@@ -1579,6 +1607,7 @@ Soyez amical et spécifique, évitez le jargon technique."""
             # Technical equipment
             (r'\bgpus?\b', 'GPU'),
             (r'\bground\s+power\s+units?\b', 'GPU'),
+            (r'\bpower\s+units?\b', 'GPU'),
             (r'\bpcas?\b', 'PCA'),
             (r'\bpower\s+conditioning\s+units?\b', 'PCA'),
             
@@ -1595,11 +1624,30 @@ Soyez amical et spécifique, évitez le jargon technique."""
         return query
     
     def normalize_entity_patterns(self, query):
-        """Handle entity ID spacing (TG BM 05 → TG-BM-05)"""
+        """Handle entity ID spacing (TG BM 05 → TG-BM-05) and condensed format (tgcn01 → TG-CN-01)"""
         original = query
         
-        # Pattern: 2-3 letters, space, 2-3 letters, space, 1-3 numbers
+        # Pattern 1: Spaced format - 2-3 letters, space, 2-3 letters, space, 1-3 numbers
         query = re.sub(r'\b([A-Z]{2,3})\s+([A-Z]{2,3})\s+(\d{1,3})\b', r'\1-\2-\3', query)
+        
+        # Pattern 2: Condensed format - letters+letters+numbers all together (e.g., tgcn01 → TG-CN-01)
+        def condensed_entity_replacer(match):
+            full_match = match.group(0)
+            # Extract: first 2-3 letters, next 2-3 letters, final 1-3 numbers
+            if len(full_match) >= 5:  # Minimum: 2+2+1 = 5 chars
+                # Try different splits: 2+2+numbers, 2+3+numbers, 3+2+numbers
+                for first_len in [2, 3]:
+                    for second_len in [2, 3]:
+                        if first_len + second_len < len(full_match):
+                            first_part = full_match[:first_len].upper()
+                            second_part = full_match[first_len:first_len+second_len].upper()
+                            remaining = full_match[first_len+second_len:]
+                            # Check if remaining is all digits
+                            if remaining.isdigit() and 1 <= len(remaining) <= 3:
+                                return f'{first_part}-{second_part}-{remaining}'
+            return full_match  # Return unchanged if pattern doesn't match
+        
+        query = re.sub(r'\b([a-zA-Z]{2,3})([a-zA-Z]{2,3})(\d{1,3})\b', condensed_entity_replacer, query)
         
         if original != query:
             logging.info(f"🔧 ENTITY ID NORMALIZATION: '{original}' → '{query}'")
@@ -1785,25 +1833,30 @@ Soyez amical et spécifique, évitez le jargon technique."""
         
         # If no phrase match, fall back to individual word matching
         if query == original_query:
-            words = query.split()
-            best_match = None
-            first_matched_word = None
+            # First check if any complete equipment type is already present
+            query_lower = query.lower()
+            equipment_already_present = any(eq_type.lower() in query_lower for eq_type in actual_types)
             
-            for word in words:
-                # Remove punctuation and make singular
-                clean_word = re.sub(r'[^\w]', '', word)
-                singular = self.make_singular(clean_word)
+            if not equipment_already_present:
+                words = query.split()
+                best_match = None
+                first_matched_word = None
                 
-                # Try to match against actual equipment types
-                match = self.find_equipment_match(singular, actual_types)
-                if match and not best_match:  # Only take the FIRST match
-                    best_match = match
-                    first_matched_word = word
-                    break  # Stop after first match
-            
-            # Replace the first matched word only
-            if best_match and first_matched_word:
-                query = re.sub(rf'\b{re.escape(first_matched_word)}\b', best_match, query, flags=re.IGNORECASE)
+                for word in words:
+                    # Remove punctuation and make singular
+                    clean_word = re.sub(r'[^\w]', '', word)
+                    singular = self.make_singular(clean_word)
+                    
+                    # Try to match against actual equipment types
+                    match = self.find_equipment_match(singular, actual_types)
+                    if match and not best_match:  # Only take the FIRST match
+                        best_match = match
+                        first_matched_word = word
+                        break  # Stop after first match
+                
+                # Replace the first matched word only
+                if best_match and first_matched_word:
+                    query = re.sub(rf'\b{re.escape(first_matched_word)}\b', best_match, query, flags=re.IGNORECASE)
         
         if original_query != query:
             logging.info(f"🎯 DYNAMIC EQUIPMENT MATCH: '{original_query}' → '{query}'")
@@ -1815,13 +1868,13 @@ Soyez amical et spécifique, évitez le jargon technique."""
         complex_indicators = [
             # Scenario-based queries
             'broke down', 'broken', 'failed', 'out of service', 'unavailable',
-            'next closest', 'nearest available', 'alternative', 'backup',
+            'alternative', 'backup',
             'if', 'what if', 'suppose', 'assuming',
             # Multi-step reasoning
             'then what', 'what happens', 'where else', 'what other',
             'reassign', 'reallocate', 'move to', 'switch to',
             # Proximity/location reasoning  
-            'closest', 'nearest', 'next available', 'furthest',
+            'next available', 'furthest',
             'best option', 'optimal', 'recommend'
         ]
         
@@ -1858,10 +1911,10 @@ Soyez amical et spécifique, évitez le jargon technique."""
             
                          EXAMPLE COMPLEX SCENARIOS:
              
-             "Pushback tractor broke down for UA2406, where is the next closest one?"
+                             "Push-back tractor broke down for UA2406, where is the next closest one?"
              Analysis:
-             1. Find current pushback tractor for UA2406: SELECT * FROM equipment WHERE assigned_flight = 'UA2406' AND equipment_type = 'Pushback Tractor';
-             2. Find all available pushback tractors: SELECT * FROM equipment WHERE equipment_type = 'Pushback Tractor' AND status = 'Available';
+             1. Find current pushback tractor for UA2406: SELECT * FROM equipment WHERE assigned_flight = 'UA2406' AND equipment_type = 'Push-back Tractor';
+             2. Find all available pushback tractors: SELECT * FROM equipment WHERE equipment_type = 'Push-back Tractor' AND status = 'Available';
              3. Get UA2406's gate: SELECT departure_gate FROM flights WHERE flight_number = 'UA2406';
              4. Recommend the closest available option based on gate proximity
              5. Consider operational impact and reassignment
@@ -2308,7 +2361,7 @@ def test_queries():
         'en': [
             "What is the status of flight UA2406?",
             "What ramp team members are on break now?",
-            "What is the nearest pushback tractor to gate A1?"
+                            "What is the nearest push-back tractor to gate A1?"
         ],
         'es': [
             "¿Cuál es el estado del vuelo UA2406?",
@@ -2382,7 +2435,7 @@ def improve_transcription():
         The transcript may contain errors typical of speech recognition, especially with:
         - Flight numbers (like "U A 2406" should be "UA2406")
         - "assigned" misheard as "a sign to" or "assigned to fly to"
-        - "pushback tractor" misheard as "pushback transfer" or "push back track door"
+                        - "push-back tractor" misheard as "pushback transfer" or "push back track door"
         - Aviation terminology and equipment names
         - Fragmented numbers or letters
         
@@ -2390,7 +2443,7 @@ def improve_transcription():
         Focus on:
         1. Fixing fragmented flight numbers (U A 2406 → UA2406)
         2. Correcting "a sign to" → "assigned to"
-        3. Correcting "pushback transfer" → "pushback tractor"
+                        3. Correcting "pushback transfer" → "push-back tractor"
         4. Correcting "what's" → "what" for questions
         5. Maintaining the original meaning and structure
         
