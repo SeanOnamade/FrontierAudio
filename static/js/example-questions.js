@@ -17,28 +17,41 @@
         // Show panel
         tab.addEventListener('click', function() {
             panel.classList.add('open');
-            document.body.style.overflow = 'hidden'; // Prevent background scroll
+            // Allow background scrolling - removed overflow hidden
         });
 
-        // Hide panel
-        closeButton.addEventListener('click', function() {
+        // Simple, reliable close functionality
+        function closePanel() {
+            console.log('Closing panel');
             panel.classList.remove('open');
-            document.body.style.overflow = ''; // Restore scroll
+        }
+        
+        // Single click event - simple and reliable
+        closeButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            closePanel();
+        });
+        
+        // Keyboard support
+        closeButton.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                closePanel();
+            }
         });
 
         // Hide panel when clicking outside
         panel.addEventListener('click', function(e) {
             if (e.target === panel) {
-                panel.classList.remove('open');
-                document.body.style.overflow = '';
+                closePanel();
             }
         });
 
         // Hide panel on escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape' && panel.classList.contains('open')) {
-                panel.classList.remove('open');
-                document.body.style.overflow = '';
+                closePanel();
             }
         });
 

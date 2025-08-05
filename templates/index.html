@@ -24,28 +24,7 @@
             <p class="app-subtitle">Airport Operations Assistant</p>
         </header>
 
-        <!-- Color Legend (Status Key) -->
-        <div class="status-legend">
-            <h3 class="legend-title">Status Colors</h3>
-            <div class="legend-items">
-                <div class="legend-item">
-                    <div class="legend-color listening"></div>
-                    <span class="legend-label">Listening</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color idle"></div>
-                    <span class="legend-label">Processing</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color processing"></div>
-                    <span class="legend-label">Error</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color speaking"></div>
-                    <span class="legend-label">Responding</span>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Main Voice Interface -->
         <main class="main-interface">
@@ -79,6 +58,29 @@
                 <div class="status-container">
                     <p id="voice-status" class="voice-status">Ready to listen</p>
                     <p id="voice-hint" class="voice-hint">Say "Jarvis" to start</p>
+                </div>
+                
+                <!-- Color Legend (Status Key) - Next to bubble -->
+                <div class="status-legend">
+                    <h3 class="legend-title">Status Colors</h3>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div class="legend-color listening"></div>
+                            <span class="legend-label">Listening</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color idle"></div>
+                            <span class="legend-label">Processing</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color processing"></div>
+                            <span class="legend-label">Error</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color speaking"></div>
+                            <span class="legend-label">Responding</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -515,10 +517,8 @@
         <div id="example-questions-panel" class="slide-out-panel">
             <div class="panel-header">
                 <h2>Example Questions</h2>
-                <button id="close-panel" class="close-button">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                <button id="close-panel" class="close-button" tabindex="0" aria-label="Close panel">
+                    Close
                 </button>
             </div>
             <div class="panel-content">
